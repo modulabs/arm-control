@@ -1,0 +1,26 @@
+<package>
+  <name>acrobot_gazebo</name>
+  <version>0.1.0</version>
+  <description>acrobot_gazebo</description>
+  <maintainer email="GangnamDynamics@googlegroups.com">GangnamDynamics</maintainer>
+
+  <license>BSD</license>
+
+  <url type="website">http://www.modulabs.co.kr/Dynamics</url>
+  <url type="bugtracker"></url>
+  <url type="repository">https://github.com/modulabs/GangnamDynamics</url>
+
+  <author email="GangnamDynamics@googlegroups.com">GangnamDynamics</author>
+
+  <buildtool_depend>catkin</buildtool_depend>
+
+  <run_depend>gazebo_plugins</run_depend>
+  <run_depend>gazebo_ros</run_depend>
+  <run_depend>gazebo_ros_control</run_depend>
+  <run_depend>acrobot_control</run_depend>
+  <run_depend>acrobot_description</run_depend>
+  <run_depend>xacro</run_depend>
+
+  <export>
+  </export>
+</package>

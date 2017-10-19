@@ -1,0 +1,27 @@
+<launch>
+  <!-- Load joint controller configurations from YAML file to parameter server -->
+  <rosparam file="$(find acrobot_control)/config/acrobot_control.yaml" command="load"/>
+
+  <!-- load the controllers -->
+  <node name="controller_spawner" pkg="controller_manager" type="spawner" respawn="false"
+	output="screen" ns="/acrobot" args="joint_state_controller joint1_torque_controller joint2_torque_controller"/>
+
+  <!-- convert joint states to TF transforms for rviz, etc -->
+  <node name="robot_state_publisher" pkg="robot_state_publisher" type="robot_state_publisher"
+	respawn="false" output="screen">
+    <remap from="/joint_states" to="/acrobot/joint_states" />
+  </node>
+
+  <!-- Create node to control joint torques using effort controller -->
+  <node name="acrobot_control_node" pkg="acrobot_control" type="acrobot_control"
+    output="screen" respawn="true" />
+
+  <!-- Load RQT with a pre-setup GUI for Baxter controls from a perspective file  -->
+  <node name="acrobot_rqt_joint1" pkg="rqt_gui" type="rqt_gui" respawn="false"
+	output="screen" args="--perspective-file $(find acrobot_control)/launch/PID_Control1.perspective"/>
+
+  <!-- Load RQT with a pre-setup GUI for Baxter controls from a perspective file  -->
+  <node name="acrobot_rqt_joint2" pkg="rqt_gui" type="rqt_gui" respawn="false"
+	output="screen" args="--perspective-file $(find acrobot_control)/launch/PID_Control2.perspective"/>
+
+</launch>
