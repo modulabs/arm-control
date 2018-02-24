@@ -1,0 +1,10 @@
+<library path="lib/libelfin_controller">
+
+  <class name="elfin_controller/TimeDelayController" type="elfin_controller::TimeDelayController" base_class_type="controller_interface::ControllerBase">
+    <description>
+	Time Delay Control
+    </description>
+  </class>
+
+</library>
+
