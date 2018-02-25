@@ -6,6 +6,7 @@
       
   <node name="urdf_spawner" pkg="gazebo_ros" type="spawn_model" respawn="false" output="screen" args="-urdf -model elfin3 -param robot_description"/>
 
-  <rosparam file="$(find elfin_gazebo)/config/elfin_arm_control.yaml" command="load"/>
-        
+
+  
+  <include file="$(find elfin_controller)/launch/elfin_controller.launch" />
 </launch>
