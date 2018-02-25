@@ -4,22 +4,24 @@ Time delayed control algorithm on 6-dof Elfin manipulator </br>
 Implemented time delayed control algorithm on 6-dof Elfin manipulator simulation using ros-control frameworks. </br>
 
 ## How to run 
-- Prerequisite</br>
- 1. Install gazebo-ros-pkgs and gazebo-ros-control (might already installed)</br>
+### Prerequisite</br>
+#### Install gazebo-ros-pkgs and gazebo-ros-control (might already installed)</br>
 
     $ sudo apt-get install ros-kinetic-gazebo-ros-pkgs ros-kinetic-gazebo-ros-control
 
- 2. Install effort-controllers for torque-control</br>
+#### Install effort-controllers for torque-control</br>
 
     $ sudo apt-get install ros-kinetic-effort-controllers
 
-- Download and build 
+### Download and build 
+
     $ cd ~/catkin_ws/src
     $ git clone https://github.com/modulabs/gdyn-arm-tutorial.git
     $ cd ~/catkin_ws/
     $ catkin_make
 
-- Run
+### Run
+
     $ roslaunch acrobot_gazebo acrobot_world.launch
 
 or simply
