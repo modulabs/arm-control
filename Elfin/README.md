@@ -1,15 +1,15 @@
-Time delayed control algorithm on 6-dof Elfin manipulator </br>
+Time delayed control algorithm on 6-dof Elfin manipulator
 
 ## Introduction
-Implemented time delayed control algorithm on 6-dof Elfin manipulator simulation using ros-control frameworks. </br>
+Implemented time delayed control algorithm on 6-dof Elfin manipulator simulation using ros-control frameworks.
 
 ## How to run 
-### Prerequisite</br>
-#### Install gazebo-ros-pkgs and gazebo-ros-control (might already installed)</br>
+### Prerequisite
+Install gazebo-ros-pkgs and gazebo-ros-control
 
     $ sudo apt-get install ros-kinetic-gazebo-ros-pkgs ros-kinetic-gazebo-ros-control
 
-#### Install effort-controllers for torque-control</br>
+Install effort-controllers to use torque-control interface
 
     $ sudo apt-get install ros-kinetic-effort-controllers
 
