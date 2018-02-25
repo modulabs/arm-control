@@ -1,57 +1,32 @@
-Experiment control algorithm using acrobot mechanism </br>
-Acrobot is double pendulum mechanism having 1 passive and 1 active joint
+Time delayed control algorithm on 6-dof Elfin manipulator </br>
 
 ## Introduction
-Acrobot control algorithm implemented.</br>
-In swing-up phase, task space partial feedback linearization used,</br>
-Near origin, lqr used,</br>
-Switching between 2 phases, region of attraction algorithm have to be implemented (not yet)
+Implemented time delayed control algorithm on 6-dof Elfin manipulator simulation using ros-control frameworks. </br>
 
-## Usage
+## How to run 
 - Prerequisite</br>
  1. Install gazebo-ros-pkgs and gazebo-ros-control (might already installed)</br>
-```sh
-sudo apt-get install ros-kinetic-gazebo-ros-pkgs ros-kinetic-gazebo-ros-control
-``` 
-  2. Install effort-controllers for torque-control</br>
-```sh
-sudo apt-get install ros-kinetic-effort-controllers
-```
+
+    $ sudo apt-get install ros-kinetic-gazebo-ros-pkgs ros-kinetic-gazebo-ros-control
+
+ 2. Install effort-controllers for torque-control</br>
+
+    $ sudo apt-get install ros-kinetic-effort-controllers
+
 - Download and build 
-```sh
-cd ~/catkin_ws/
-catkin_make
-```
+    $ cd ~/catkin_ws/src
+    $ git clone https://github.com/modulabs/gdyn-arm-tutorial.git
+    $ cd ~/catkin_ws/
+    $ catkin_make
 
-- Download acrobot_gazebo, acrobot_description, acrobot_control package in this repository at ~/catkin_ws/src/
+- Run
+    $ roslaunch acrobot_gazebo acrobot_world.launch
 
-- If you want to use python code, authorize acrobot_control/scripts/acrobot_control.py
-```sh
-chmod +x acrobot_control.py
-```
+or simply
 
-- Launch acrobot_gazebo
-```sh
-roslaunch acrobot_gazebo acrobot_world.launch
-```
-
-- Launch acrobot_control
-```sh
-roslaunch acrobot_control acrobot_control.launch
-```
-or if you want to use python code
-```sh
-roslaunch acrobot_control acrobot_control_python.launch
-```
-
-
-## To do
-1. Region of attraction 
+    $ ./run.sh
 
 ## Reference
-1. tedrake lecture
-2. tedrake paper
-3. spong swing up
-4. sos
-5. <http://gazebosim.org/tutorials?cat=connect_ros>
-6. <https://github.com/JoshMarino/gazebo_and_ros_control>
+1. [ros-control] (http://wiki.ros.org/ros_control)
+2. [Write a new ros-controller] (https://github.com/ros-controls/ros_control/wiki/controller_interface)
+3. [Elfin manipulator] (http://wiki.ros.org/Robots/Elfin)
