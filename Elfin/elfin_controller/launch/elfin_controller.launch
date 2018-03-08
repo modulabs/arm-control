@@ -1,5 +1,6 @@
 <launch>
   <rosparam file="$(find elfin_controller)/config/elfin_arm_control.yaml" command="load"/>
+  
   <node name="controller_spawner" pkg="controller_manager" type="spawner" respawn="false"
     output="screen" ns="/elfin" args="joint_state_controller time_delay_controller"/>
 

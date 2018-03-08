@@ -11,11 +11,13 @@
   <buildtool_depend>catkin</buildtool_depend>
   <build_depend>controller_interface</build_depend>
   <build_depend>urdf</build_depend>
-  <build_depend>control_msgs</build_depend> 
+  <build_depend>control_msgs</build_depend>
+  <bulild_depend>kdl_parser</build_depend>
 
   <run_depend>controller_interface</run_depend>
   <run_depend>urdf</run_depend>
-  <run_depend>control_msgs</run_depend> 
+  <run_depend>control_msgs</run_depend>
+  <run_depend>kdl_parser</run_depend>
 
    <export>
     <controller_interface plugin="${prefix}/controller_plugins.xml" />
