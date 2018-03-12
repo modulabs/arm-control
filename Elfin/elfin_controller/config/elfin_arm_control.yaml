@@ -12,4 +12,16 @@ elfin:
           - elfin_joint4
           - elfin_joint5
           - elfin_joint6
+    
+    gravity_comp_controller:
+      type: elfin_controller/GravityCompController
+      joints:
+          - elfin_joint1
+          - elfin_joint2
+          - elfin_joint3
+          - elfin_joint4
+          - elfin_joint5
+          - elfin_joint6
+          pid: {p: 100.0, i:0.01, d: 10.0}
+
 

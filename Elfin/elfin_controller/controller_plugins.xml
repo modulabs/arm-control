@@ -2,9 +2,14 @@
 
   <class name="elfin_controller/TimeDelayController" type="elfin_controller::TimeDelayController" base_class_type="controller_interface::ControllerBase">
     <description>
-	Time Delay Control
+	  Time Delay Controller
     </description>
   </class>
 
+  <class name="elfin_controller/GravityCompController" type="elfin_controller::GravityCompController" base_class_type="controller_interface::ControllerBase">
+    <description>
+	  Gravity Compensation Controller
+    </description>
+  </class>
 </library>
 

@@ -5,6 +5,7 @@ find_package(catkin REQUIRED COMPONENTS
   controller_interface
   control_msgs
   urdf
+  kdl_parser
 )
 
 include_directories(include ${Boost_INCLUDE_DIR} ${catkin_INCLUDE_DIRS})
@@ -14,11 +15,13 @@ catkin_package(
     controller_interface
     control_msgs
     urdf
+    kdl_parser
   LIBRARIES ${PROJECT_NAME}
 )
 
 add_library(${PROJECT_NAME}
-  src/Time_Delay_Controller.cpp
+  src/time_delay_controller.cpp
+  src/gravity_comp_controller.cpp
 )
 
 target_link_libraries(${PROJECT_NAME} ${catkin_LIBRARIES})

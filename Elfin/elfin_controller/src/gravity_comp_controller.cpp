@@ -3,10 +3,15 @@
 #include <pluginlib/class_list_macros.h>
 #include <std_msgs/Float64MultiArray.h>
 
-#define PI 3.141592
-#define D2R PI/180.0
-#define R2D 180.0/PI
-#define JointMax 6
+#include <urdf/model.h>
+
+#include <kdl/tree.hpp>
+#include <kdl/kdl.hpp>
+#include <kdl/chain.hpp>
+#include <kdl/chaindynparam.hpp>
+#include <kdl_parser/kdl_parser.hpp>
+
+#include <boost/scoped_ptr.hpp>
 
 namespace elfin_controller{
 
@@ -14,14 +19,14 @@ namespace elfin_controller{
 	{
 		public:
 		bool init(hardware_interface::EffortJointInterface* hw, ros::NodeHandle &n)
-  		{
+  		{	
+			// joint name
     		if (!n.getParam("joints", joint_names_))
 			{
 				ROS_ERROR("Could not find joint name");
 				return false;
     		}
 			n_joints_ = joint_names_.size();
-			tau.resize(n_joints_);
 
 			if(n_joints_ == 0)
 			{
@@ -29,6 +34,7 @@ namespace elfin_controller{
 				return false;
 			}
 
+			// urdf
 			urdf::Model urdf;
 			if (!urdf.initParam("robot_description"))
 			{
@@ -36,6 +42,7 @@ namespace elfin_controller{
             	return false;
 			}
 
+			// joint handle
 			for(int i=0; i<n_joints_; i++)
 			{
 				try
@@ -58,12 +65,14 @@ namespace elfin_controller{
 			}
 
 			// kdl parser
-			if (!kdl_parser::treeFromUrdfModel(urdf, tree_)){
+			if (!kdl_parser::treeFromUrdfModel(urdf, kdl_tree_)){
 				ROS_ERROR("Failed to construct kdl tree");
 				return false;
 			}
 
 			// kdl chain
+			std::string root_name = urdf.getLink("root_name")->name;
+			std::string tip_name = urdf.getLink("tip_name")->name;
 			if(!kdl_tree_.getChain(root_name, tip_name, kdl_chain_))
 			{
 				ROS_ERROR_STREAM("Failed to get KDL chain from tree: ");
@@ -84,179 +93,171 @@ namespace elfin_controller{
 			ROS_DEBUG("Number of segments: %d", kdl_chain_.getNrOfSegments());
         	ROS_DEBUG("Number of joints in chain: %d", kdl_chain_.getNrOfJoints());
 
-			pub_desired_pos_ = n.advertise<std_msgs::Float64MultiArray>("desired_pos", 1000);
-			pub_current_pos_ = n.advertise<std_msgs::Float64MultiArray>("current_pos", 1000);
-			pub_desired_vel_ = n.advertise<std_msgs::Float64MultiArray>("desired_vel", 1000);
-			pub_current_vel_ = n.advertise<std_msgs::Float64MultiArray>("current_vel", 1000);
-			pub_desired_acc_ = n.advertise<std_msgs::Float64MultiArray>("desired_acc", 1000);
-			pub_current_acc_ = n.advertise<std_msgs::Float64MultiArray>("current_acc", 1000);
-			pub_error_ = n.advertise<std_msgs::Float64MultiArray>("error", 1000);
-			pub_error_vel_ = n.advertise<std_msgs::Float64MultiArray>("error_vel", 1000);	
+			gravity_ = KDL::Vector::Zero();
+			gravity_(2) = -9.81;
+			G_.resize(n_joints_);	
+			
+			// inverse dynamics solver
+			id_solver_.reset( new KDL::ChainDynParam(kdl_chain_, gravity_) );
+
+			// command and state
+			tau_cmd_.resize(n_joints_);
+			q_cmd_sp_.resize(n_joints_);
+			q_cmd_.resize(n_joints_);
+			qdot_cmd_.resize(n_joints_);
+			qddot_cmd_.resize(n_joints_);
+			
+			q_.resize(n_joints_);
+
+			// limit [to do] read from parameter
+			q_limit_min_.resize(n_joints_); q_limit_max_.resize(n_joints_);
+			q_limit_min_.data << -90*KDL::deg2rad, -90*KDL::deg2rad, -90*KDL::deg2rad, -90*KDL::deg2rad, -90*KDL::deg2rad, -90*KDL::deg2rad;
+			q_limit_max_.data << 90*KDL::deg2rad, 90*KDL::deg2rad, 90*KDL::deg2rad, 90*KDL::deg2rad, 90*KDL::deg2rad, 90*KDL::deg2rad; 
+			qdot_limit_.resize(n_joints_);	
+			qdot_limit_.data << 90*KDL::deg2rad, 90*KDL::deg2rad, 90*KDL::deg2rad, 90*KDL::deg2rad, 90*KDL::deg2rad, 90*KDL::deg2rad;
+			qddot_limit_.resize(n_joints_);
+			qddot_limit_.data << 90*KDL::deg2rad, 90*KDL::deg2rad, 90*KDL::deg2rad, 90*KDL::deg2rad, 90*KDL::deg2rad, 90*KDL::deg2rad;
+			
+
+			// gains
+			Kp_.resize(n_joints_);
+			Kd_.resize(n_joints_);
+			Ki_.resize(n_joints_);
+			q_error_integral_.resize(n_joints_);
+			q_integral_min_ = .0;
+			q_integral_max_ = .0;	// [to do] assign proper value
+
+			// subscribe command
+			sub_q_cmd_ = n.subscribe("command", 1, &GravityCompController::setCommandCB, this);
+
+			// ser
+			//ros::ServiceServer srv_load_gain_ = n.advertiseService("load_gain", &GravityCompController::loadGainCB, this);
+			for (size_t i=0; i<n_joints_; i++)
+			{
+				Kp_(i) = 1.0;	
+				Kd_(i) = .0;
+				Ki_(i) = .0;
+				q_error_integral_(i) = .0;
+			}
 
    			return true;
   		}
 
+		void starting(const ros::Time& time)
+		{
+			// get joint positions
+			for(size_t i=0; i<n_joints_; i++) 
+			{
+				q_(i) = joints_[i].getPosition();
+				qdot_(i) = joints_[i].getVelocity();
+				q_error_integral_(i) = .0;
+			}
+
+			ROS_INFO("Starting Gravity Compensation Controller");
+		}
+
+		void setCommandCB(const std_msgs::Float64MultiArrayConstPtr& msg)
+		{
+			if(msg->data.size()!=n_joints_)
+			{ 
+				ROS_ERROR_STREAM("Dimension of command (" << msg->data.size() << ") does not match number of joints (" << n_joints_ << ")! Not executing!");
+				return; 
+			}
+
+    		for (unsigned int i = 0; i<n_joints_; i++)
+    			q_cmd_sp_(i) = msg->data[i];
+		}
+
+		// load gain is not permitted during controller loading?
+		void loadGainCB()
+		{
+			
+		}
+
   		void update(const ros::Time& time, const ros::Duration& period)
   		{
-			samplint_time_ = time.toSec() - last_time_;
-			
-			for(int i=0; i<n_joints_; i++)
+			// simple trajectory interpolation from joint command setpoint
+			double dt = period.toSec();
+			double qdot_cmd;
+			for (size_t i=0; i<n_joints_; i++)
 			{
-				desired_pos_[i] = init_pos_[i] + mag_*sin(2*PI*feq_*period.toSec()*count_);
-	  			current_pos_[i] = joints_[i].getPosition();
+				double dq = q_cmd_sp_(i) - q_cmd_(i);	// [to do] shortest distance using angle
+				double qdot_cmd = KDL::sign(dq) * KDL::min( fabs(dq/dt), fabs(qdot_limit_(i)) );
+				double ddq = qdot_cmd - qdot_cmd_(i);	// [to do] shortest distance using angle
+				double qddot_cmd = KDL::sign(ddq) * KDL::min( fabs(ddq/dt), fabs(qddot_limit_(i)) );
+				qdot_cmd_(i) += qddot_cmd*dt;
+				q_cmd_(i) += qdot_cmd*dt;
+			}
 
-				desired_vel_[i] = mag_*2*PI*feq_*cos(2*PI*feq_*period.toSec()*count_);
-				current_vel_[i] = joints_[i].getVelocity();
-
-				desired_acc_[i] = -mag_*2*PI*feq_*2*PI*feq_*sin(2*PI*feq_*period.toSec()*count_);
-				current_acc_[i] = (current_vel_[i] - current_vel_old_[i])/period.toSec();
-			
-				error_[i] = desired_pos_[i] - current_pos_[i];
-				error_vel_[i] = desired_vel_[i] - current_vel_[i];
-
-				ded_[i] = desired_acc_[i] + 20.0*error_vel_[i] + 100.0*error_[i];
-				tde_[i] = desired_cmd_old_[i] - Mbar_[i] * current_acc_[i];
-			
-		 		desired_cmd_[i] = Mbar_[i] * ded_[i] + tde_[i];
-
-				joints_[i].setCommand(desired_cmd_[i]);
-
-				current_vel_old_[i] = current_vel_[i];
-				desired_cmd_old_[i] = desired_cmd_[i];				
-			}	
-			
-			msg_desired_pos_.data.clear();
-			msg_current_pos_.data.clear();
-			msg_desired_vel_.data.clear();
-			msg_current_vel_.data.clear();
-			msg_desired_acc_.data.clear();
-			msg_current_acc_.data.clear();
-			msg_error_.data.clear();
-			msg_error_vel_.data.clear();
-
-			for(int i=0; i<JointMax; i++)
+			// get joint states
+			for (size_t i=0; i<n_joints_; i++)
 			{
-				msg_desired_pos_.data.push_back(desired_pos_[i]*R2D);
-				msg_current_pos_.data.push_back(current_pos_[i]*R2D);
-				msg_desired_vel_.data.push_back(desired_vel_[i]*R2D);
-				msg_current_vel_.data.push_back(current_vel_[i]*R2D);
-				msg_desired_acc_.data.push_back(desired_acc_[i]*R2D);
-				msg_current_acc_.data.push_back(current_acc_[i]*R2D);
-				msg_error_.data.push_back(error_[i]*R2D);
-				msg_error_vel_.data.push_back(error_vel_[i]*R2D);
-
-			}			
-			
-			last_time_ = time.toSec();
-			count_++;
-
-			pub_desired_pos_.publish(msg_desired_pos_);
-			pub_current_pos_.publish(msg_current_pos_);
-			pub_desired_vel_.publish(msg_desired_vel_);
-			pub_current_vel_.publish(msg_current_vel_);
-			pub_desired_acc_.publish(msg_desired_acc_);
-			pub_current_acc_.publish(msg_current_acc_);
-			pub_error_.publish(msg_error_);
-			pub_error_vel_.publish(msg_error_vel_);
-
-  		}
-
-  		void starting(const ros::Time& time)
-		{
-			last_time_ = 0.0;
-			samplint_time_ = 0.0;
-			count_ = 0.0;
-
-			for(int i=0; i<JointMax; i++)
-			{
-  				init_pos_[i] = joints_[i].getPosition();
-
-				desired_cmd_[i] = 0.0;
-				desired_cmd_old_[i] = 0.0;
-				desired_pos_[i] = 0.0;
-				current_pos_[i] = 0.0;
-				desired_vel_[i] = 0.0;
-				current_vel_[i] = 0.0;
-				current_vel_old_[i] = 0.0;
-				desired_acc_[i] = 0.0;
-				current_acc_[i] = 0.0;
-
-				error_[i] = 0.0;
-				error_vel_[i] = 0.0;
-				ded_[i] = 0.0;
-				tde_[i] = 0.0;
+				q_(i) = joints_[i].getPosition();
+				qdot_(i) = joints_[i].getVelocity();
 			}
 			
-			mag_ = 45.0*D2R;
-			feq_ = 0.3;
-				
-			Mbar_[0] = 0.01;
-			Mbar_[1] = 0.01;
-			Mbar_[2] = 0.005;
-			Mbar_[3] = 0.0015;
-			Mbar_[4] = 0.001;
-			Mbar_[5] = 0.00012;
+			// compute gravity torque
+			id_solver_->JntToGravity(q_, G_);
 
-		}
+			// error
+			KDL::JntArray q_error;
+			q_error.data = q_cmd_.data - q_.data;	// [to do] shortest distance using angle
+			q_error_integral_.data += q_error.data;
+			
+			// integral saturation
+			for (size_t i; i<n_joints_; i++)
+			{
+				if (q_error_integral_(i) > q_integral_max_)
+					q_error_integral_(i) = q_integral_max_;
+				else if (q_error_integral_(i) < -q_integral_max_)
+					q_error_integral_(i) = -q_integral_max_;
+			}
+
+			// torque command
+			tau_cmd_.data = G_.data + Kp_.data.cwiseProduct(q_error.data) - Kd_.data.cwiseProduct(qdot_.data) + Ki_.data.cwiseProduct(q_error_integral_.data);
+
+			for(int i=0; i<n_joints_; i++)
+			{
+				joints_[i].setCommand(tau_cmd_(i));
+			}
+  		}
 
   		void stopping(const ros::Time& time) { }
 
 	private:
+		// joint handles
 		unsigned int n_joints_;
 		std::vector<std::string> joint_names_;
   		std::vector<hardware_interface::JointHandle> joints_;
 		std::vector<urdf::JointConstSharedPtr> joint_urdfs_;
 
+		// kdl
 		KDL::Tree 	kdl_tree_;
 		KDL::Chain	kdl_chain_;
-		boost::scoped_ptr<KDL::ChainDynParam> id_solver_;
-		KDL::JntArray G_;	// gravity vector
+		boost::scoped_ptr<KDL::ChainDynParam> id_solver_;	// inverse dynamics solver
+		KDL::JntArray G_;									// gravity torque vector
+		KDL::Vector gravity_;
 
-		double last_time_;
-		double samplint_time_;
-		double count_;
-		
-  		double init_pos_[JointMax];
-		double desired_cmd_[JointMax];
-		double desired_cmd_old_[JointMax];
-		double desired_pos_[JointMax];
-		double current_pos_[JointMax];
-		double desired_vel_[JointMax];
-		double current_vel_[JointMax];
-		double current_vel_old_[JointMax];
-		double desired_acc_[JointMax];
-		double current_acc_[JointMax];
-		double error_[JointMax];
-		double error_vel_[JointMax];
-		double ded_[JointMax];
-		double tde_[JointMax];		
-			
-		double mag_;
-		double feq_;
+		// pid gain
+		KDL::JntArray Kp_, Ki_, Kd_;						// p,i,d gain
+		KDL::JntArray q_error_integral_;
+		double q_integral_min_;
+		double q_integral_max_;
 
-		double Mbar_[JointMax];
+		// cmd, state
+		KDL::JntArray tau_cmd_;
+		KDL::JntArray q_cmd_, qdot_cmd_, qddot_cmd_;
+		KDL::JntArray q_cmd_sp_;
+		KDL::JntArray q_, qdot_;
 
-		ros::Publisher pub_desired_pos_;
-		ros::Publisher pub_current_pos_;
-		ros::Publisher pub_desired_vel_;
-		ros::Publisher pub_current_vel_;
-		ros::Publisher pub_desired_acc_;
-		ros::Publisher pub_current_acc_;
-		ros::Publisher pub_error_;
-		ros::Publisher pub_error_vel_;
+		// limit
+		KDL::JntArray q_limit_min_, q_limit_max_, qdot_limit_, qddot_limit_;
 
-		std_msgs::Float64MultiArray msg_desired_pos_;
-		std_msgs::Float64MultiArray msg_current_pos_;
-		std_msgs::Float64MultiArray msg_desired_vel_;
-		std_msgs::Float64MultiArray msg_current_vel_;
-		std_msgs::Float64MultiArray msg_desired_acc_;
-		std_msgs::Float64MultiArray msg_current_acc_;
-		std_msgs::Float64MultiArray msg_error_;
-		std_msgs::Float64MultiArray msg_error_vel_;
-		
+		// topic
+		ros::Subscriber sub_q_cmd_;
 	};
 
 }
 
-PLUGINLIB_EXPORT_CLASS(elfin_controller::TimeDelayController,controller_interface::ControllerBase)
+PLUGINLIB_EXPORT_CLASS(elfin_controller::GravityCompController, controller_interface::ControllerBase)
 

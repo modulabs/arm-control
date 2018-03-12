@@ -1,7 +1,7 @@
 <?xml version="1.0"?>
 <package>
   <name>elfin_controller</name>
-  <version>0.0.0</version>
+  <version>0.0.2</version>
   <description>The elfin_controller package</description>
 
   <maintainer email="kyungmin5257@gmail.com">kyungmin</maintainer>
@@ -12,7 +12,7 @@
   <build_depend>controller_interface</build_depend>
   <build_depend>urdf</build_depend>
   <build_depend>control_msgs</build_depend>
-  <bulild_depend>kdl_parser</build_depend>
+  <build_depend>kdl_parser</build_depend>
 
   <run_depend>controller_interface</run_depend>
   <run_depend>urdf</run_depend>
