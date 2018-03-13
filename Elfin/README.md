@@ -22,7 +22,7 @@ Install effort-controllers to use torque-control interface
 
 ### Run
 
-    $ roslaunch acrobot_gazebo acrobot_world.launch
+    $ roslaunch elfin_gazebo elfin3_empty_world.launch
 
 or simply
 
