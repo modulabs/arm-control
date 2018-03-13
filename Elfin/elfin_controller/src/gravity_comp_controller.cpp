@@ -13,6 +13,8 @@
 
 #include <boost/scoped_ptr.hpp>
 
+#include <boost/lexical_cast.hpp>
+
 namespace elfin_controller{
 
 	class GravityCompController: public controller_interface::Controller<hardware_interface::EffortJointInterface>
@@ -33,6 +35,10 @@ namespace elfin_controller{
 				ROS_ERROR("List of joint names is empty.");
 				return false;
 			}
+			else
+			{
+				ROS_INFO("Found %d joint names", n_joints_);
+			}
 
 			// urdf
 			urdf::Model urdf;
@@ -40,6 +46,10 @@ namespace elfin_controller{
 			{
 				ROS_ERROR("Failed to parse urdf file");
             	return false;
+			}
+			else
+			{
+				ROS_INFO("Found robot_description");
 			}
 
 			// joint handle
@@ -51,7 +61,7 @@ namespace elfin_controller{
 				}
 				catch (const hardware_interface::HardwareInterfaceException& e)
 				{
-					ROS_ERROR_STREAM("Exception thron: " << e.what());
+					ROS_ERROR_STREAM("Exception thrown: " << e.what());
 					return false;
 				}
 
@@ -69,10 +79,14 @@ namespace elfin_controller{
 				ROS_ERROR("Failed to construct kdl tree");
 				return false;
 			}
+			else
+			{
+				ROS_INFO("Constructed kdl tree");
+			}
 
 			// kdl chain
-			std::string root_name = urdf.getLink("root_name")->name;
-			std::string tip_name = urdf.getLink("tip_name")->name;
+			std::string root_name = "world";
+			std::string tip_name = "elfin_link6";
 			if(!kdl_tree_.getChain(root_name, tip_name, kdl_chain_))
 			{
 				ROS_ERROR_STREAM("Failed to get KDL chain from tree: ");
@@ -89,6 +103,10 @@ namespace elfin_controller{
 
             	return false;
 			}
+			else
+			{
+				ROS_INFO("Got kdl chain");
+			}
 			
 			ROS_DEBUG("Number of segments: %d", kdl_chain_.getNrOfSegments());
         	ROS_DEBUG("Number of joints in chain: %d", kdl_chain_.getNrOfJoints());
@@ -101,13 +119,14 @@ namespace elfin_controller{
 			id_solver_.reset( new KDL::ChainDynParam(kdl_chain_, gravity_) );
 
 			// command and state
-			tau_cmd_.resize(n_joints_);
-			q_cmd_sp_.resize(n_joints_);
-			q_cmd_.resize(n_joints_);
-			qdot_cmd_.resize(n_joints_);
-			qddot_cmd_.resize(n_joints_);
+			tau_cmd_.data = Eigen::VectorXd::Zero(n_joints_);
+			q_cmd_sp_.data = Eigen::VectorXd::Zero(n_joints_);
+			q_cmd_.data = Eigen::VectorXd::Zero(n_joints_);
+			qdot_cmd_.data = Eigen::VectorXd::Zero(n_joints_);
+			qddot_cmd_.data = Eigen::VectorXd::Zero(n_joints_);
 			
-			q_.resize(n_joints_);
+			q_.data = Eigen::VectorXd::Zero(n_joints_);
+			qdot_.data = Eigen::VectorXd::Zero(n_joints_);
 
 			// limit [to do] read from parameter
 			q_limit_min_.resize(n_joints_); q_limit_max_.resize(n_joints_);
@@ -127,27 +146,63 @@ namespace elfin_controller{
 			q_integral_min_ = .0;
 			q_integral_max_ = .0;	// [to do] assign proper value
 
+
+
+			std::vector<double> Kp(n_joints_), Ki(n_joints_), Kd(n_joints_);
+			for (size_t i=0; i<n_joints_; i++)
+			{
+				std::string si = boost::lexical_cast<std::string>(i+1);
+				if ( n.getParam("/elfin/gravity_comp_controller/joint" + si + "/pid/p", Kp[i]) )
+				{
+					Kp_(i) = Kp[i];
+				}
+				else
+				{
+					std::cout << "/elfin/gravity_comp_controller/joint" + si + "/pid/p" << std::endl;
+					ROS_ERROR("Cannot find pid/p gain");
+					return false;
+				}
+
+				if ( n.getParam("/elfin/gravity_comp_controller/joint" + si + "/pid/i", Ki[i]) )
+				{
+					Ki_(i) = Ki[i];
+				}
+				else
+				{
+					ROS_ERROR("Cannot find pid/i gain");
+					return false;
+				}
+
+				if ( n.getParam("/elfin/gravity_comp_controller/joint" + si + "/pid/d", Kd[i]) )
+				{
+					Kd_(i) = Kd[i];
+				}
+				else
+				{
+					ROS_ERROR("Cannot find pid/d gain");
+					return false;
+				}
+				
+				q_error_integral_(i) = .0;
+			}
+
 			// subscribe command
 			sub_q_cmd_ = n.subscribe("command", 1, &GravityCompController::setCommandCB, this);
 
+			ROS_INFO("End of gravity controller init");
 			// ser
 			//ros::ServiceServer srv_load_gain_ = n.advertiseService("load_gain", &GravityCompController::loadGainCB, this);
-			for (size_t i=0; i<n_joints_; i++)
-			{
-				Kp_(i) = 1.0;	
-				Kd_(i) = .0;
-				Ki_(i) = .0;
-				q_error_integral_(i) = .0;
-			}
 
    			return true;
   		}
 
 		void starting(const ros::Time& time)
 		{
+			ROS_INFO("Start gravity controller");
 			// get joint positions
 			for(size_t i=0; i<n_joints_; i++) 
 			{
+				ROS_INFO("JOINT %d", (int)i);
 				q_(i) = joints_[i].getPosition();
 				qdot_(i) = joints_[i].getVelocity();
 				q_error_integral_(i) = .0;
@@ -179,15 +234,20 @@ namespace elfin_controller{
 			// simple trajectory interpolation from joint command setpoint
 			double dt = period.toSec();
 			double qdot_cmd;
+			
+			static double t=.0;
 			for (size_t i=0; i<n_joints_; i++)
 			{
+				
 				double dq = q_cmd_sp_(i) - q_cmd_(i);	// [to do] shortest distance using angle
 				double qdot_cmd = KDL::sign(dq) * KDL::min( fabs(dq/dt), fabs(qdot_limit_(i)) );
 				double ddq = qdot_cmd - qdot_cmd_(i);	// [to do] shortest distance using angle
 				double qddot_cmd = KDL::sign(ddq) * KDL::min( fabs(ddq/dt), fabs(qddot_limit_(i)) );
 				qdot_cmd_(i) += qddot_cmd*dt;
 				q_cmd_(i) += qdot_cmd*dt;
+				q_cmd_(i) = 30*KDL::deg2rad*sin(M_PI*t);
 			}
+			t = t + 0.001;
 
 			// get joint states
 			for (size_t i=0; i<n_joints_; i++)
