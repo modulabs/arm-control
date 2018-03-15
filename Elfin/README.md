@@ -22,13 +22,13 @@ Install effort-controllers to use torque-control interface
 
 ### Run
 
-    $ roslaunch acrobot_gazebo acrobot_world.launch
+    $ roslaunch elfin_gazebo elfin3_empty_world.launch
 
 or simply
 
     $ ./run.sh
 
 ## Reference
-1. [ros-control] (http://wiki.ros.org/ros_control)
-2. [Write a new ros-controller] (https://github.com/ros-controls/ros_control/wiki/controller_interface)
-3. [Elfin manipulator] (http://wiki.ros.org/Robots/Elfin)
+1. [ros-control](http://wiki.ros.org/ros_control)
+2. [Write a new ros-controller](https://github.com/ros-controls/ros_control/wiki/controller_interface)
+3. [Elfin manipulator](http://wiki.ros.org/Robots/Elfin)
