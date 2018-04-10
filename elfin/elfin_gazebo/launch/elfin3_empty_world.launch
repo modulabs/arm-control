@@ -5,8 +5,4 @@
   <param name="robot_description" command="$(find xacro)/xacro.py --inorder '$(find elfin_description)/urdf/elfin3.urdf.xacro'" />
       
   <node name="urdf_spawner" pkg="gazebo_ros" type="spawn_model" respawn="false" output="screen" args="-urdf -model elfin3 -param robot_description"/>
-
-
-  
-  <include file="$(find elfin_controller)/launch/elfin_controller.launch" />
 </launch>

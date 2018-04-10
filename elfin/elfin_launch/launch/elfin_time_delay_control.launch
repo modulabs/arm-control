@@ -1,0 +1,6 @@
+<launch>
+  <include file="$(find elfin_gazebo)/launch/elfin3_empty_world.launch" />
+
+  <include file="$(find elfin_control)/launch/time_delay_control.launch" />
+</launch>
+

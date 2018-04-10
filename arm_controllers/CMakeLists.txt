@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 2.8.3)
-project(elfin_controller)
+project(arm_controllers)
 
 find_package(catkin REQUIRED COMPONENTS
   controller_interface

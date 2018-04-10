@@ -1,5 +1,7 @@
 #include <controller_interface/controller.h>
 #include <hardware_interface/joint_command_interface.h>
+#include <control_toolbox/pid.h>
+
 #include <pluginlib/class_list_macros.h>
 #include <std_msgs/Float64MultiArray.h>
 
@@ -13,16 +15,14 @@
 
 #include <boost/scoped_ptr.hpp>
 
-#include <boost/lexical_cast.hpp>
-
-namespace elfin_controller{
+namespace arm_controllers{
 
 	class GravityCompController: public controller_interface::Controller<hardware_interface::EffortJointInterface>
 	{
 		public:
 		bool init(hardware_interface::EffortJointInterface* hw, ros::NodeHandle &n)
   		{	
-			// joint name
+			// List of controlled joints
     		if (!n.getParam("joints", joint_names_))
 			{
 				ROS_ERROR("Could not find joint name");
@@ -85,8 +85,17 @@ namespace elfin_controller{
 			}
 
 			// kdl chain
-			std::string root_name = "world";
-			std::string tip_name = "elfin_link6";
+			std::string root_name, tip_name;
+			if (!n.getParam("root_link", root_name))
+			{
+				ROS_ERROR("Could not find root link name");
+				return false;
+    		}
+			if (!n.getParam("tip_link", tip_name))
+			{
+				ROS_ERROR("Could not find tip link name");
+				return false;
+    		}
 			if(!kdl_tree_.getChain(root_name, tip_name, kdl_chain_))
 			{
 				ROS_ERROR_STREAM("Failed to get KDL chain from tree: ");
@@ -138,52 +147,15 @@ namespace elfin_controller{
 			qddot_limit_.data << 90*KDL::deg2rad, 90*KDL::deg2rad, 90*KDL::deg2rad, 90*KDL::deg2rad, 90*KDL::deg2rad, 90*KDL::deg2rad;
 			
 
-			// gains
-			Kp_.resize(n_joints_);
-			Kd_.resize(n_joints_);
-			Ki_.resize(n_joints_);
-			q_error_integral_.resize(n_joints_);
-			q_integral_min_ = .0;
-			q_integral_max_ = .0;	// [to do] assign proper value
-
-
-
-			std::vector<double> Kp(n_joints_), Ki(n_joints_), Kd(n_joints_);
+			// pid gains
 			for (size_t i=0; i<n_joints_; i++)
 			{
-				std::string si = boost::lexical_cast<std::string>(i+1);
-				if ( n.getParam("/elfin/gravity_comp_controller/joint" + si + "/pid/p", Kp[i]) )
+				// Load PID Controller using gains set on parameter server
+				if (!pid_controllers_[i].init(ros::NodeHandle(n, "gains/" + joint_names_[i] + "/pid")))
 				{
-					Kp_(i) = Kp[i];
-				}
-				else
-				{
-					std::cout << "/elfin/gravity_comp_controller/joint" + si + "/pid/p" << std::endl;
-					ROS_ERROR("Cannot find pid/p gain");
+					ROS_ERROR_STREAM("Failed to load PID parameters from " << joint_names_[i] + "/pid");
 					return false;
 				}
-
-				if ( n.getParam("/elfin/gravity_comp_controller/joint" + si + "/pid/i", Ki[i]) )
-				{
-					Ki_(i) = Ki[i];
-				}
-				else
-				{
-					ROS_ERROR("Cannot find pid/i gain");
-					return false;
-				}
-
-				if ( n.getParam("/elfin/gravity_comp_controller/joint" + si + "/pid/d", Kd[i]) )
-				{
-					Kd_(i) = Kd[i];
-				}
-				else
-				{
-					ROS_ERROR("Cannot find pid/d gain");
-					return false;
-				}
-				
-				q_error_integral_(i) = .0;
 			}
 
 			// subscribe command
@@ -198,14 +170,11 @@ namespace elfin_controller{
 
 		void starting(const ros::Time& time)
 		{
-			ROS_INFO("Start gravity controller");
 			// get joint positions
 			for(size_t i=0; i<n_joints_; i++) 
 			{
-				ROS_INFO("JOINT %d", (int)i);
 				q_(i) = joints_[i].getPosition();
 				qdot_(i) = joints_[i].getVelocity();
-				q_error_integral_(i) = .0;
 			}
 
 			ROS_INFO("Starting Gravity Compensation Controller");
@@ -238,7 +207,6 @@ namespace elfin_controller{
 			static double t=.0;
 			for (size_t i=0; i<n_joints_; i++)
 			{
-				
 				double dq = q_cmd_sp_(i) - q_cmd_(i);	// [to do] shortest distance using angle
 				double qdot_cmd = KDL::sign(dq) * KDL::min( fabs(dq/dt), fabs(qdot_limit_(i)) );
 				double ddq = qdot_cmd - qdot_cmd_(i);	// [to do] shortest distance using angle
@@ -247,7 +215,7 @@ namespace elfin_controller{
 				q_cmd_(i) += qdot_cmd*dt;
 				q_cmd_(i) = 30*KDL::deg2rad*sin(M_PI*t);
 			}
-			t = t + 0.001;
+			t = t + dt;
 
 			// get joint states
 			for (size_t i=0; i<n_joints_; i++)
@@ -262,23 +230,12 @@ namespace elfin_controller{
 			// error
 			KDL::JntArray q_error;
 			q_error.data = q_cmd_.data - q_.data;	// [to do] shortest distance using angle
-			q_error_integral_.data += q_error.data;
 			
-			// integral saturation
-			for (size_t i; i<n_joints_; i++)
-			{
-				if (q_error_integral_(i) > q_integral_max_)
-					q_error_integral_(i) = q_integral_max_;
-				else if (q_error_integral_(i) < -q_integral_max_)
-					q_error_integral_(i) = -q_integral_max_;
-			}
-
 			// torque command
-			tau_cmd_.data = G_.data + Kp_.data.cwiseProduct(q_error.data) - Kd_.data.cwiseProduct(qdot_.data) + Ki_.data.cwiseProduct(q_error_integral_.data);
-
 			for(int i=0; i<n_joints_; i++)
 			{
-				joints_[i].setCommand(tau_cmd_(i));
+				tau_cmd_(i) = G_(i) + pid_controllers_[i].computeCommand(q_error(i), period);
+				joints_[i].setCommand( tau_cmd_(i) );
 			}
   		}
 
@@ -299,10 +256,7 @@ namespace elfin_controller{
 		KDL::Vector gravity_;
 
 		// pid gain
-		KDL::JntArray Kp_, Ki_, Kd_;						// p,i,d gain
-		KDL::JntArray q_error_integral_;
-		double q_integral_min_;
-		double q_integral_max_;
+  		std::vector<control_toolbox::Pid> pid_controllers_;       /**< Internal PID controllers. */
 
 		// cmd, state
 		KDL::JntArray tau_cmd_;
@@ -319,5 +273,5 @@ namespace elfin_controller{
 
 }
 
-PLUGINLIB_EXPORT_CLASS(elfin_controller::GravityCompController, controller_interface::ControllerBase)
+PLUGINLIB_EXPORT_CLASS(arm_controllers::GravityCompController, controller_interface::ControllerBase)
 

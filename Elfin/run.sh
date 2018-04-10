@@ -1,1 +1,0 @@
-roslaunch elfin_gazebo elfin3_empty_world.launch

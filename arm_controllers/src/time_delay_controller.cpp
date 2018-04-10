@@ -8,7 +8,7 @@
 #define R2D 180.0/PI
 #define JointMax 6
 
-namespace elfin_controller{
+namespace arm_controllers{
 
 	class TimeDelayController: public controller_interface::Controller<hardware_interface::EffortJointInterface>
 	{
@@ -202,5 +202,5 @@ namespace elfin_controller{
 
 }
 
-PLUGINLIB_EXPORT_CLASS(elfin_controller::TimeDelayController,controller_interface::ControllerBase)
+PLUGINLIB_EXPORT_CLASS(arm_controllers::TimeDelayController,controller_interface::ControllerBase)
 
