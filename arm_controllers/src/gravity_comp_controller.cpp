@@ -1,9 +1,11 @@
 #include <controller_interface/controller.h>
 #include <hardware_interface/joint_command_interface.h>
 #include <control_toolbox/pid.h>
+#include <realtime_tools/realtime_buffer.h>
 
 #include <pluginlib/class_list_macros.h>
 #include <std_msgs/Float64MultiArray.h>
+#include <angles/angles.h>
 
 #include <urdf/model.h>
 
@@ -20,6 +22,7 @@ namespace arm_controllers{
 	class GravityCompController: public controller_interface::Controller<hardware_interface::EffortJointInterface>
 	{
 		public:
+		~GravityCompController() {sub_command_.shutdown();}
 		bool init(hardware_interface::EffortJointInterface* hw, ros::NodeHandle &n)
   		{	
 			// List of controlled joints
@@ -35,10 +38,6 @@ namespace arm_controllers{
 				ROS_ERROR("List of joint names is empty.");
 				return false;
 			}
-			else
-			{
-				ROS_INFO("Found %d joint names", n_joints_);
-			}
 
 			// urdf
 			urdf::Model urdf;
@@ -46,10 +45,6 @@ namespace arm_controllers{
 			{
 				ROS_ERROR("Failed to parse urdf file");
             	return false;
-			}
-			else
-			{
-				ROS_INFO("Found robot_description");
 			}
 
 			// joint handle
@@ -78,10 +73,6 @@ namespace arm_controllers{
 			if (!kdl_parser::treeFromUrdfModel(urdf, kdl_tree_)){
 				ROS_ERROR("Failed to construct kdl tree");
 				return false;
-			}
-			else
-			{
-				ROS_INFO("Constructed kdl tree");
 			}
 
 			// kdl chain
@@ -112,13 +103,6 @@ namespace arm_controllers{
 
             	return false;
 			}
-			else
-			{
-				ROS_INFO("Got kdl chain");
-			}
-			
-			ROS_DEBUG("Number of segments: %d", kdl_chain_.getNrOfSegments());
-        	ROS_DEBUG("Number of joints in chain: %d", kdl_chain_.getNrOfJoints());
 
 			gravity_ = KDL::Vector::Zero();
 			gravity_(2) = -9.81;
@@ -129,7 +113,6 @@ namespace arm_controllers{
 
 			// command and state
 			tau_cmd_.data = Eigen::VectorXd::Zero(n_joints_);
-			q_cmd_sp_.data = Eigen::VectorXd::Zero(n_joints_);
 			q_cmd_.data = Eigen::VectorXd::Zero(n_joints_);
 			qdot_cmd_.data = Eigen::VectorXd::Zero(n_joints_);
 			qddot_cmd_.data = Eigen::VectorXd::Zero(n_joints_);
@@ -137,17 +120,10 @@ namespace arm_controllers{
 			q_.data = Eigen::VectorXd::Zero(n_joints_);
 			qdot_.data = Eigen::VectorXd::Zero(n_joints_);
 
-			// limit [to do] read from parameter
-			q_limit_min_.resize(n_joints_); q_limit_max_.resize(n_joints_);
-			q_limit_min_.data << -90*KDL::deg2rad, -90*KDL::deg2rad, -90*KDL::deg2rad, -90*KDL::deg2rad, -90*KDL::deg2rad, -90*KDL::deg2rad;
-			q_limit_max_.data << 90*KDL::deg2rad, 90*KDL::deg2rad, 90*KDL::deg2rad, 90*KDL::deg2rad, 90*KDL::deg2rad, 90*KDL::deg2rad; 
-			qdot_limit_.resize(n_joints_);	
-			qdot_limit_.data << 90*KDL::deg2rad, 90*KDL::deg2rad, 90*KDL::deg2rad, 90*KDL::deg2rad, 90*KDL::deg2rad, 90*KDL::deg2rad;
-			qddot_limit_.resize(n_joints_);
-			qddot_limit_.data << 90*KDL::deg2rad, 90*KDL::deg2rad, 90*KDL::deg2rad, 90*KDL::deg2rad, 90*KDL::deg2rad, 90*KDL::deg2rad;
-			
+			q_error_.data = Eigen::VectorXd::Zero(n_joints_);
 
 			// pid gains
+			pid_controllers_.resize(n_joints_);
 			for (size_t i=0; i<n_joints_; i++)
 			{
 				// Load PID Controller using gains set on parameter server
@@ -158,10 +134,10 @@ namespace arm_controllers{
 				}
 			}
 
-			// subscribe command
-			sub_q_cmd_ = n.subscribe("command", 1, &GravityCompController::setCommandCB, this);
+			// command
+			commands_buffer_.writeFromNonRT(std::vector<double>(n_joints_, 0.0));
+			sub_command_ = n.subscribe("command", 1, &GravityCompController::commandCB, this);
 
-			ROS_INFO("End of gravity controller init");
 			// ser
 			//ros::ServiceServer srv_load_gain_ = n.advertiseService("load_gain", &GravityCompController::loadGainCB, this);
 
@@ -180,16 +156,14 @@ namespace arm_controllers{
 			ROS_INFO("Starting Gravity Compensation Controller");
 		}
 
-		void setCommandCB(const std_msgs::Float64MultiArrayConstPtr& msg)
+		void commandCB(const std_msgs::Float64MultiArrayConstPtr& msg)
 		{
 			if(msg->data.size()!=n_joints_)
 			{ 
-				ROS_ERROR_STREAM("Dimension of command (" << msg->data.size() << ") does not match number of joints (" << n_joints_ << ")! Not executing!");
-				return; 
+			ROS_ERROR_STREAM("Dimension of command (" << msg->data.size() << ") does not match number of joints (" << n_joints_ << ")! Not executing!");
+			return; 
 			}
-
-    		for (unsigned int i = 0; i<n_joints_; i++)
-    			q_cmd_sp_(i) = msg->data[i];
+			commands_buffer_.writeFromNonRT(msg->data);
 		}
 
 		// load gain is not permitted during controller loading?
@@ -200,47 +174,64 @@ namespace arm_controllers{
 
   		void update(const ros::Time& time, const ros::Duration& period)
   		{
-			// simple trajectory interpolation from joint command setpoint
-			double dt = period.toSec();
-			double qdot_cmd;
+			std::vector<double> & commands = *commands_buffer_.readFromRT();
 			
-			static double t=.0;
-			for (size_t i=0; i<n_joints_; i++)
-			{
-				double dq = q_cmd_sp_(i) - q_cmd_(i);	// [to do] shortest distance using angle
-				double qdot_cmd = KDL::sign(dq) * KDL::min( fabs(dq/dt), fabs(qdot_limit_(i)) );
-				double ddq = qdot_cmd - qdot_cmd_(i);	// [to do] shortest distance using angle
-				double qddot_cmd = KDL::sign(ddq) * KDL::min( fabs(ddq/dt), fabs(qddot_limit_(i)) );
-				qdot_cmd_(i) += qddot_cmd*dt;
-				q_cmd_(i) += qdot_cmd*dt;
-				q_cmd_(i) = 30*KDL::deg2rad*sin(M_PI*t);
-			}
-			t = t + dt;
-
 			// get joint states
 			for (size_t i=0; i<n_joints_; i++)
 			{
+				q_cmd_(i) = commands[i];
+				enforceJointLimits(q_cmd_(i), i);
 				q_(i) = joints_[i].getPosition();
 				qdot_(i) = joints_[i].getVelocity();
+
+		        // Compute position error
+				if (joint_urdfs_[i]->type == urdf::Joint::REVOLUTE)
+				{
+					angles::shortest_angular_distance_with_limits(
+						q_(i),
+						q_cmd_(i),
+						joint_urdfs_[i]->limits->lower,
+						joint_urdfs_[i]->limits->upper,
+						q_error_(i));
+				}
+				else if (joint_urdfs_[i]->type == urdf::Joint::CONTINUOUS)
+				{
+					q_error_(i) = angles::shortest_angular_distance(q_(i), q_cmd_(i));
+				}
+				else //prismatic
+				{
+					q_error_(i) = q_cmd_(i) - q_(i);
+				}
 			}
 			
 			// compute gravity torque
 			id_solver_->JntToGravity(q_, G_);
 
-			// error
-			KDL::JntArray q_error;
-			q_error.data = q_cmd_.data - q_.data;	// [to do] shortest distance using angle
-			
 			// torque command
 			for(int i=0; i<n_joints_; i++)
 			{
-				tau_cmd_(i) = G_(i) + pid_controllers_[i].computeCommand(q_error(i), period);
+				tau_cmd_(i) = G_(i) + pid_controllers_[i].computeCommand(q_error_(i), period);
 				joints_[i].setCommand( tau_cmd_(i) );
 			}
   		}
 
   		void stopping(const ros::Time& time) { }
 
+		void enforceJointLimits(double &command, unsigned int index)
+		{
+			// Check that this joint has applicable limits
+			if (joint_urdfs_[index]->type == urdf::Joint::REVOLUTE || joint_urdfs_[index]->type == urdf::Joint::PRISMATIC)
+			{
+			if( command > joint_urdfs_[index]->limits->upper ) // above upper limnit
+			{
+				command = joint_urdfs_[index]->limits->upper;
+			}
+			else if( command < joint_urdfs_[index]->limits->lower ) // below lower limit
+			{
+				command = joint_urdfs_[index]->limits->lower;
+			}
+			}
+		}
 	private:
 		// joint handles
 		unsigned int n_joints_;
@@ -259,16 +250,14 @@ namespace arm_controllers{
   		std::vector<control_toolbox::Pid> pid_controllers_;       /**< Internal PID controllers. */
 
 		// cmd, state
+		realtime_tools::RealtimeBuffer<std::vector<double> > commands_buffer_;
 		KDL::JntArray tau_cmd_;
 		KDL::JntArray q_cmd_, qdot_cmd_, qddot_cmd_;
-		KDL::JntArray q_cmd_sp_;
 		KDL::JntArray q_, qdot_;
-
-		// limit
-		KDL::JntArray q_limit_min_, q_limit_max_, qdot_limit_, qddot_limit_;
+		KDL::JntArray q_error_;
 
 		// topic
-		ros::Subscriber sub_q_cmd_;
+		ros::Subscriber sub_command_;
 	};
 
 }

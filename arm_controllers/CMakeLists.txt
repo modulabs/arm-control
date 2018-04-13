@@ -2,20 +2,24 @@ cmake_minimum_required(VERSION 2.8.3)
 project(arm_controllers)
 
 find_package(catkin REQUIRED COMPONENTS
+  angles
   controller_interface
   control_msgs
   urdf
   kdl_parser
+  realtime_tools
 )
 
 include_directories(include ${Boost_INCLUDE_DIR} ${catkin_INCLUDE_DIRS})
 
 catkin_package(
   CATKIN_DEPENDS
+    angles
     controller_interface
     control_msgs
     urdf
     kdl_parser
+    realtime_tools
   LIBRARIES ${PROJECT_NAME}
 )
 
