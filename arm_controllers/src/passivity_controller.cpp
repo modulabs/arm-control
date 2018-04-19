@@ -19,10 +19,10 @@
 
 namespace arm_controllers{
 
-	class GravityCompController: public controller_interface::Controller<hardware_interface::EffortJointInterface>
+	class PassivityController: public controller_interface::Controller<hardware_interface::EffortJointInterface>
 	{
 		public:
-		~GravityCompController() {sub_command_.shutdown();}
+		~PassivityController() {sub_command_.shutdown();}
 		bool init(hardware_interface::EffortJointInterface* hw, ros::NodeHandle &n)
   		{	
 			// List of controlled joints
@@ -106,26 +106,40 @@ namespace arm_controllers{
 
 			gravity_ = KDL::Vector::Zero();
 			gravity_(2) = -9.81;
-			G_.resize(n_joints_);	
+			M_.resize(n_joints_);
+			C_.resize(n_joints_);
+			G_.resize(n_joints_);
 			
 			// inverse dynamics solver
 			id_solver_.reset( new KDL::ChainDynParam(kdl_chain_, gravity_) );
 
 			// command and state
 			tau_cmd_.data = Eigen::VectorXd::Zero(n_joints_);
+			qdot_ref_.data = Eigen::VectorXd::Zero(n_joints_);
+			qddot_ref_.data = Eigen::VectorXd::Zero(n_joints_);
 			q_cmd_.data = Eigen::VectorXd::Zero(n_joints_);
 			qdot_cmd_.data = Eigen::VectorXd::Zero(n_joints_);
 			qddot_cmd_.data = Eigen::VectorXd::Zero(n_joints_);
+			q_cmd_old_.data = Eigen::VectorXd::Zero(n_joints_);
+			qdot_cmd_old_.data = Eigen::VectorXd::Zero(n_joints_);
 			
 			q_.data = Eigen::VectorXd::Zero(n_joints_);
 			qdot_.data = Eigen::VectorXd::Zero(n_joints_);
 
 			q_error_.data = Eigen::VectorXd::Zero(n_joints_);
+			qdot_error_.data = Eigen::VectorXd::Zero(n_joints_);
 
-			// pid gains
+			// gains
+			alpha_.resize(n_joints_);
 			pid_controllers_.resize(n_joints_);
 			for (size_t i=0; i<n_joints_; i++)
 			{
+				if (!n.getParam("gains/" + joint_names_[i] + "/alpha", alpha_[i]))
+				{
+					ROS_ERROR("Could not find root link name");
+					return false;
+				}
+
 				// Load PID Controller using gains set on parameter server
 				if (!pid_controllers_[i].init(ros::NodeHandle(n, "gains/" + joint_names_[i] + "/pid")))
 				{
@@ -136,10 +150,10 @@ namespace arm_controllers{
 
 			// command
 			commands_buffer_.writeFromNonRT(std::vector<double>(n_joints_, 0.0));
-			sub_command_ = n.subscribe("command", 1, &GravityCompController::commandCB, this);
+			sub_command_ = n.subscribe("command", 1, &PassivityController::commandCB, this);
 
 			// ser
-			//ros::ServiceServer srv_load_gain_ = n.advertiseService("load_gain", &GravityCompController::loadGainCB, this);
+			//ros::ServiceServer srv_load_gain_ = n.advertiseService("load_gain", &PassivityController::loadGainCB, this);
 
    			return true;
   		}
@@ -153,7 +167,7 @@ namespace arm_controllers{
 				qdot_(i) = joints_[i].getVelocity();
 			}
 
-			ROS_INFO("Starting Gravity Compensation Controller");
+			ROS_INFO("Starting Passivity Based Controller");
 		}
 
 		void commandCB(const std_msgs::Float64MultiArrayConstPtr& msg)
@@ -204,7 +218,15 @@ namespace arm_controllers{
 					q_error_(i) = q_cmd_(i) - q_(i);
 				}
 			}
+
+			qdot_cmd_.data = (q_cmd_.data - q_cmd_old_.data) / period.toSec();;
+			qddot_cmd_.data = (qdot_cmd_.data - qdot_cmd_old_.data) / period.toSec();
 			
+			qdot_error_.data = qdot_cmd_.data - qdot_.data;
+
+			q_cmd_old_ = q_cmd_;
+			qdot_cmd_old_ = qdot_cmd_;
+
 			// double dt = period.toSec();
 			// if (t==10)
 			// {
@@ -215,12 +237,19 @@ namespace arm_controllers{
 			t++;
 			
 			// compute gravity torque
+			id_solver_->JntToMass(q_, M_);
+			id_solver_->JntToCoriolis(q_, C_);
 			id_solver_->JntToGravity(q_, G_);
 
 			// torque command
+			qdot_ref_ = qdot_cmd_.data + alpha_.data.cwiseProduct(q_error_.data);
+			qddot_ref_ = qddot_cmd.data + alpha_.data.cwiseProduct(qdot_error_.data);
+
+			tau_cmd_.data = M_.data * qddot_ref_.data + C_.data.cwiseProduct(qdot_ref_.data) + G_.data;
+
 			for(int i=0; i<n_joints_; i++)
 			{
-				tau_cmd_(i) = G_(i) + pid_controllers_[i].computeCommand(q_error_(i), period);
+				tau_cmd_(i) += pid_controllers_[i].computeCommand(q_error_(i), qdot_error_(i), period.toSec());
 				joints_[i].setCommand( tau_cmd_(i) );
 			}
   		}
@@ -253,18 +282,22 @@ namespace arm_controllers{
 		KDL::Tree 	kdl_tree_;
 		KDL::Chain	kdl_chain_;
 		boost::scoped_ptr<KDL::ChainDynParam> id_solver_;	// inverse dynamics solver
+		KDL::JntSpaceInertiaMatrix M_;
+		KDL::JntArray C_;
 		KDL::JntArray G_;									// gravity torque vector
 		KDL::Vector gravity_;
 
 		// pid gain
-  		std::vector<control_toolbox::Pid> pid_controllers_;       /**< Internal PID controllers. */
+		KDL::JntArray alpha_;								// error weight in passivity-based control joint reference
+  		std::vector<control_toolbox::Pid> pid_controllers_; // Internal PID controllers
 
 		// cmd, state
 		realtime_tools::RealtimeBuffer<std::vector<double> > commands_buffer_;
 		KDL::JntArray tau_cmd_;
-		KDL::JntArray q_cmd_, qdot_cmd_, qddot_cmd_;
+		KDL::JntArray qdot_ref_, qddot_ref_;				// passivity-based control joint reference
+		KDL::JntArray q_cmd_, qdot_cmd_, qddot_cmd_, q_cmd_old_, qdot_cmd_old_;
 		KDL::JntArray q_, qdot_;
-		KDL::JntArray q_error_;
+		KDL::JntArray q_error_, qdot_error_;
 
 		// topic
 		ros::Subscriber sub_command_;
@@ -272,5 +305,5 @@ namespace arm_controllers{
 
 }
 
-PLUGINLIB_EXPORT_CLASS(arm_controllers::GravityCompController, controller_interface::ControllerBase)
+PLUGINLIB_EXPORT_CLASS(arm_controllers::PassivityController, controller_interface::ControllerBase)
 

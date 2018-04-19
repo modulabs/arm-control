@@ -26,6 +26,7 @@ catkin_package(
 add_library(${PROJECT_NAME}
   src/time_delay_controller.cpp
   src/gravity_comp_controller.cpp
+  src/passivity_controller.cpp
 )
 
 target_link_libraries(${PROJECT_NAME} ${catkin_LIBRARIES})
