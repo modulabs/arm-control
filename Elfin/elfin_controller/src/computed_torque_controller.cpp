@@ -17,12 +17,12 @@
 
 namespace elfin_controller{
 
-	class GravityCompController: public controller_interface::Controller<hardware_interface::EffortJointInterface>
+	class ComputedTorqueController: public controller_interface::Controller<hardware_interface::EffortJointInterface>
 	{
 		public:
 		bool init(hardware_interface::EffortJointInterface* hw, ros::NodeHandle &n)
   		{	
-			// 1. Get joint name
+			// joint name
     		if (!n.getParam("joints", joint_names_))
 			{
 				ROS_ERROR("Could not find joint name");
@@ -40,7 +40,7 @@ namespace elfin_controller{
 				ROS_INFO("Found %d joint names", n_joints_);
 			}
 
-			// 2. Get urdf
+			// urdf
 			urdf::Model urdf;
 			if (!urdf.initParam("robot_description"))
 			{
@@ -52,7 +52,7 @@ namespace elfin_controller{
 				ROS_INFO("Found robot_description");
 			}
 
-			// 3. joint handle ??
+			// joint handle
 			for(int i=0; i<n_joints_; i++)
 			{
 				try
@@ -74,8 +74,7 @@ namespace elfin_controller{
 				joint_urdfs_.push_back(joint_urdf); 
 			}
 
-			// 4. KDL
-			// 4.1 kdl parser
+			// kdl parser
 			if (!kdl_parser::treeFromUrdfModel(urdf, kdl_tree_)){
 				ROS_ERROR("Failed to construct kdl tree");
 				return false;
@@ -85,7 +84,7 @@ namespace elfin_controller{
 				ROS_INFO("Constructed kdl tree");
 			}
 
-			// 4.2 kdl chain
+			// kdl chain
 			std::string root_name = "world";
 			std::string tip_name = "elfin_link6";
 			if(!kdl_tree_.getChain(root_name, tip_name, kdl_chain_))
@@ -114,21 +113,33 @@ namespace elfin_controller{
 
 			gravity_ = KDL::Vector::Zero();
 			gravity_(2) = -9.81;
+			// ver. 01 gdyn ver
+			M_.resize(n_joints_);
+			C_.resize(n_joints_);
 			G_.resize(n_joints_);	
-			
-			// 4.3 inverse dynamics solver
-			id_solver_.reset( new KDL::ChainDynParam(kdl_chain_, gravity_) );
 
-			// 5. 선언?
+			// ver. 02 kuka
+			//M_.resize(kdl_chain_.getNrOfJoints());
+			//C_.resize(kdl_chain_.getNrOfJoints());
+			//G_.resize(kdl_chain_.getNrOfJoints());
+			
+			// inverse dynamics solver
+			id_solver_.reset( new KDL::ChainDynParam(kdl_chain_, gravity_) );
+			
+
 			// command and state
 			tau_cmd_.data = Eigen::VectorXd::Zero(n_joints_);
 			q_cmd_sp_.data = Eigen::VectorXd::Zero(n_joints_);
 			q_cmd_.data = Eigen::VectorXd::Zero(n_joints_);
 			qdot_cmd_.data = Eigen::VectorXd::Zero(n_joints_);
 			qddot_cmd_.data = Eigen::VectorXd::Zero(n_joints_);
-			
+
 			q_.data = Eigen::VectorXd::Zero(n_joints_);
 			qdot_.data = Eigen::VectorXd::Zero(n_joints_);
+
+			e_.data = Eigen::VectorXd::Zero(n_joints_);
+			e_dot_.data = Eigen::VectorXd::Zero(n_joints_);
+			e_int_.data = Eigen::VectorXd::Zero(n_joints_);
 
 			// limit [to do] read from parameter
 			q_limit_min_.resize(n_joints_); q_limit_max_.resize(n_joints_);
@@ -149,23 +160,23 @@ namespace elfin_controller{
 			q_integral_max_ = .0;	// [to do] assign proper value
 
 
-			// 6. Gain Load
+
 			std::vector<double> Kp(n_joints_), Ki(n_joints_), Kd(n_joints_);
 			for (size_t i=0; i<n_joints_; i++)
 			{
 				std::string si = boost::lexical_cast<std::string>(i+1);
-				if ( n.getParam("/elfin/gravity_comp_controller/joint" + si + "/pid/p", Kp[i]) )
+				if ( n.getParam("/elfin/computed_torque_controller/joint" + si + "/pid/p", Kp[i]) )
 				{
 					Kp_(i) = Kp[i];
 				}
 				else
 				{
-					std::cout << "/elfin/gravity_comp_controller/joint" + si + "/pid/p" << std::endl;
+					std::cout << "/elfin/computed_torque_controller/joint" + si + "/pid/p" << std::endl;
 					ROS_ERROR("Cannot find pid/p gain");
 					return false;
 				}
 
-				if ( n.getParam("/elfin/gravity_comp_controller/joint" + si + "/pid/i", Ki[i]) )
+				if ( n.getParam("/elfin/computed_torque_controller/joint" + si + "/pid/i", Ki[i]) )
 				{
 					Ki_(i) = Ki[i];
 				}
@@ -175,7 +186,7 @@ namespace elfin_controller{
 					return false;
 				}
 
-				if ( n.getParam("/elfin/gravity_comp_controller/joint" + si + "/pid/d", Kd[i]) )
+				if ( n.getParam("/elfin/computed_torque_controller/joint" + si + "/pid/d", Kd[i]) )
 				{
 					Kd_(i) = Kd[i];
 				}
@@ -189,18 +200,30 @@ namespace elfin_controller{
 			}
 
 			// subscribe command
-			sub_q_cmd_ = n.subscribe("command", 1, &GravityCompController::setCommandCB, this);
+			sub_q_cmd_ = n.subscribe("command", 1, &ComputedTorqueController::setCommandCB, this);
 
-			ROS_INFO("End of gravity controller init");
+			ROS_INFO("End of computed torque controller init");
 			// ser
-			//ros::ServiceServer srv_load_gain_ = n.advertiseService("load_gain", &GravityCompController::loadGainCB, this);
+			//ros::ServiceServer srv_load_gain_ = n.advertiseService("load_gain", &ComputedTorqueController::loadGainCB, this);
 
-   			return true;
+			// 7. ROS 명령어?
+			pub_q_cmd_ = n.advertise<std_msgs::Float64MultiArray>("qd", 1000);
+			pub_qdot_cmd_ = n.advertise<std_msgs::Float64MultiArray>("qd_dot", 1000);
+			pub_qddot_cmd_ = n.advertise<std_msgs::Float64MultiArray>("qd_ddot", 1000);
+
+			pub_q_ = n.advertise<std_msgs::Float64MultiArray>("q", 1000);		// 뒤에 숫자는?
+			pub_qdot_ = n.advertise<std_msgs::Float64MultiArray>("qdot", 1000); // 뒤에 숫자는?
+
+			pub_e_ = n.advertise<std_msgs::Float64MultiArray>("e", 1000);
+			pub_e_dot_ = n.advertise<std_msgs::Float64MultiArray>("e_dot", 1000);
+			pub_e_int_ = n.advertise<std_msgs::Float64MultiArray>("e_int", 1000);
+
+			return true;
   		}
 
 		void starting(const ros::Time& time)
 		{
-			ROS_INFO("Start gravity controller");
+			ROS_INFO("Start Computed Torque Controller controller");
 			// get joint positions
 			for(size_t i=0; i<n_joints_; i++) 
 			{
@@ -210,7 +233,7 @@ namespace elfin_controller{
 				q_error_integral_(i) = .0;
 			}
 
-			ROS_INFO("Starting Gravity Compensation Controller");
+			ROS_INFO("Starting Computed Torque Control");
 		}
 
 		void setCommandCB(const std_msgs::Float64MultiArrayConstPtr& msg)
@@ -233,9 +256,10 @@ namespace elfin_controller{
 
   		void update(const ros::Time& time, const ros::Duration& period)
   		{
-			// simple trajectory interpolation from joint command setpoint
+			// simple trajectory interpolation from joint command setpoint (??)
 			double dt = period.toSec();
 			double qdot_cmd;
+			double qddot_cmd; // jungyeong
 			
 			static double t=.0;
 			for (size_t i=0; i<n_joints_; i++)
@@ -244,9 +268,12 @@ namespace elfin_controller{
 				// double dq = q_cmd_sp_(i) - q_cmd_(i);	// [to do] shortest distance using angle
 				// double qdot_cmd = KDL::sign(dq) * KDL::min( fabs(dq/dt), fabs(qdot_limit_(i)) );
 				// double ddq = qdot_cmd - qdot_cmd_(i);	// [to do] shortest distance using angle
-				// double qddot_cmd = KDL::sign(ddq) * KDL::min( fabs(ddq/dt), fabs(qddot_limit_(i)) );
+				// double qddot_cmd = KDL::sign(ddq) * KDL::min( fabs(ddq/dt), fabs(qddot_limit_(i)) ); //jungyeong
+				
 				// qdot_cmd_(i) += qddot_cmd*dt;
 				// q_cmd_(i) += qdot_cmd*dt;
+				qddot_cmd_(i)= -M_PI*M_PI*30*KDL::deg2rad*sin(M_PI*t); // jungyeong
+				qdot_cmd_(i)= M_PI*30*KDL::deg2rad*cos(M_PI*t); // jungyeong
 				q_cmd_(i) = 30*KDL::deg2rad*sin(M_PI*t);
 			}
 			t = t + 0.001;
@@ -258,13 +285,17 @@ namespace elfin_controller{
 				qdot_(i) = joints_[i].getVelocity();
 			}
 			
-			// compute gravity torque
+			// compute M,C,G Torque
+			id_solver_->JntToMass(q_, M_);
+			id_solver_->JntToCoriolis(q_,qdot_, C_);
 			id_solver_->JntToGravity(q_, G_);
 
 			// error
-			KDL::JntArray q_error;
-			q_error.data = q_cmd_.data - q_.data;	// [to do] shortest distance using angle
-			q_error_integral_.data += q_error.data;
+			
+
+			e_dot_.data = qdot_cmd_.data - qdot_.data;
+			e_.data = q_cmd_.data - q_.data;	// [to do] shortest distance using angle
+			e_int_.data += e_.data;
 			
 			// integral saturation
 			for (size_t i; i<n_joints_; i++)
@@ -275,14 +306,61 @@ namespace elfin_controller{
 					q_error_integral_(i) = -q_integral_max_;
 			}
 
-			// torque command 
-			tau_cmd_.data =  G_.data+ Kp_.data.cwiseProduct(q_error.data) - Kd_.data.cwiseProduct(qdot_.data) + Ki_.data.cwiseProduct(q_error_integral_.data);
+			// torque command
+			aux_cmd_.data = M_.data*( qddot_cmd_.data + Kp_.data.cwiseProduct(e_.data) + Kd_.data.cwiseProduct(e_dot_.data) );
+			comp_cmd_.data = C_.data + G_.data;
+			tau_cmd_.data = aux_cmd_.data + comp_cmd_.data;
+			
+
 
 			for(int i=0; i<n_joints_; i++)
 			{
 				joints_[i].setCommand(tau_cmd_(i));
 			}
-  		}
+
+			// 3. ROS (Data save, 3.1~3.3)
+
+			// 3.1
+			msg_q_cmd_.data.clear();
+			msg_qdot_cmd_.data.clear();
+			msg_qddot_cmd_.data.clear();
+
+			msg_q_.data.clear();
+			msg_qdot_.data.clear();
+
+			msg_e_.data.clear();
+			msg_e_dot_.data.clear();
+			msg_e_int_.data.clear();
+
+
+			// 3.2
+			for (int i = 0; i < n_joints_; i++)
+			{
+				msg_q_cmd_.data.push_back(q_cmd_(i));
+				msg_qdot_cmd_.data.push_back(qdot_cmd_(i));
+				msg_qddot_cmd_.data.push_back(qddot_cmd_(i));
+
+				msg_q_.data.push_back(q_(i));
+				msg_qdot_.data.push_back(qdot_(i));
+
+				msg_e_.data.push_back(e_(i));
+				msg_e_dot_.data.push_back(e_dot_(i));
+				msg_e_int_.data.push_back(e_int_(i));
+
+			}
+
+			// 3.3
+			pub_q_cmd_.publish(msg_q_cmd_);
+			pub_qdot_cmd_.publish(msg_qdot_cmd_);
+			pub_qddot_cmd_.publish(msg_qddot_cmd_);
+
+			pub_q_.publish(msg_q_);
+			pub_qdot_.publish(msg_qdot_);
+
+			pub_e_.publish(msg_e_);
+			pub_e_dot_.publish(msg_e_dot_);
+			pub_e_int_.publish(msg_e_int_);
+		}
 
   		void stopping(const ros::Time& time) { }
 
@@ -297,20 +375,26 @@ namespace elfin_controller{
 		KDL::Tree 	kdl_tree_;
 		KDL::Chain	kdl_chain_;
 		boost::scoped_ptr<KDL::ChainDynParam> id_solver_;	// inverse dynamics solver
+		KDL::JntSpaceInertiaMatrix M_;						// Mass and Inertia matirx?
+		KDL::JntArray C_;									// Coriolis matrix?
 		KDL::JntArray G_;									// gravity torque vector
 		KDL::Vector gravity_;
 
 		// pid gain
 		KDL::JntArray Kp_, Ki_, Kd_;						// p,i,d gain
-		KDL::JntArray q_error_integral_;
 		double q_integral_min_;
 		double q_integral_max_;
+		KDL::JntArray q_error_integral_;
 
 		// cmd, state
 		KDL::JntArray tau_cmd_;
+		KDL::JntArray aux_cmd_;
+		KDL::JntArray comp_cmd_;
 		KDL::JntArray q_cmd_, qdot_cmd_, qddot_cmd_;
 		KDL::JntArray q_cmd_sp_;
 		KDL::JntArray q_, qdot_;
+		KDL::JntArray e_, e_dot_,e_int_;
+
 
 		// limit
 		KDL::JntArray q_limit_min_, q_limit_max_, qdot_limit_, qddot_limit_;
@@ -318,7 +402,6 @@ namespace elfin_controller{
 		// topic
 		ros::Subscriber sub_q_cmd_;
 
-		// 정영추가
 		// ros publisher ?
 		ros::Publisher pub_q_cmd_, pub_qdot_cmd_, pub_qddot_cmd_;
 		ros::Publisher pub_q_, pub_qdot_;
@@ -327,14 +410,13 @@ namespace elfin_controller{
 		ros::Publisher pub_M_, pub_C_, pub_G_;
 
 		// ros message ?
-		std_msgs::Float64MultiArray msg_qd_, msg_qd_dot_, msg_qd_ddot_;
+		std_msgs::Float64MultiArray msg_q_cmd_, msg_qdot_cmd_, msg_qddot_cmd_;
 		std_msgs::Float64MultiArray msg_q_, msg_qdot_;
 		std_msgs::Float64MultiArray msg_e_, msg_e_dot_, msg_e_int_;
 
 		std_msgs::Float64MultiArray msg_M_, msg_C_, msg_G_;
 	};
-
 }
 
-PLUGINLIB_EXPORT_CLASS(elfin_controller::GravityCompController, controller_interface::ControllerBase)
+PLUGINLIB_EXPORT_CLASS(elfin_controller::ComputedTorqueController, controller_interface::ControllerBase)
 

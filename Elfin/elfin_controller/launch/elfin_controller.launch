@@ -2,7 +2,12 @@
   <rosparam file="$(find elfin_controller)/config/elfin_arm_control.yaml" command="load"/>
   
   <node name="controller_spawner" pkg="controller_manager" type="spawner" respawn="false"
-    output="screen" ns="/elfin" args="joint_state_controller gravity_comp_controller"/>
+    output="screen" ns="/elfin" args="joint_state_controller computed_torque_controller"/> 
+
+
+<!-- gravity_comp_controller -->
+<!-- computed_torque_controller -->
+<!-- time_delay_controller -->
 
   <node name="robot_state_publisher" pkg="robot_state_publisher" type="state_publisher" ns="/elfin"/>
 

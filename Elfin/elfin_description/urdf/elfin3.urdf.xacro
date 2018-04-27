@@ -286,7 +286,7 @@
     type="revolute">
     <origin
       xyz="0.068808 -0.10523 0"
-      rpy="${PI} 0 0" />
+      rpy="${PI+PI/2} 0 0" />
     <parent
       link="elfin_link3" />
     <child

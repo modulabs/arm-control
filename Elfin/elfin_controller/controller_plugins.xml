@@ -11,5 +11,11 @@
 	  Gravity Compensation Controller
     </description>
   </class>
+  
+  <class name="elfin_controller/ComputedTorqueController" type="elfin_controller::ComputedTorqueController" base_class_type="controller_interface::ControllerBase">
+    <description>
+	  Computed Torque Controller in joint space
+    </description>
+  </class>
 </library>
 

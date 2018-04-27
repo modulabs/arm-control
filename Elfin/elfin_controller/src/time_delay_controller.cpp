@@ -15,17 +15,17 @@ namespace elfin_controller{
 		public:
 		bool init(hardware_interface::EffortJointInterface* hw, ros::NodeHandle &n)
   		{
-    			XmlRpc::XmlRpcValue my_joint;
-    			if (!n.getParam("joints", my_joint))
+    		XmlRpc::XmlRpcValue my_joint;
+    		if (!n.getParam("joints", my_joint))
 			{
-      				ROS_ERROR("Could not find joint name");
-		      		return false;
-    			}
+      			ROS_ERROR("Could not find joint name");
+		      	return false;
+    		}
 			
 			if(my_joint.size() != JointMax)
 			{
-      				ROS_ERROR("Wrong joint num");
-		      		return false;
+      			ROS_ERROR("Wrong joint num");
+		      	return false;
 			}
 
 			for(int i=0; i<JointMax; i++)
@@ -45,7 +45,9 @@ namespace elfin_controller{
 			pub_error_ = n.advertise<std_msgs::Float64MultiArray>("error", 1000);
 			pub_error_vel_ = n.advertise<std_msgs::Float64MultiArray>("error_vel", 1000);	
 
-    			return true;
+			
+
+    		return true;
   		}
 
   		void update(const ros::Time& time, const ros::Duration& period)
@@ -110,6 +112,8 @@ namespace elfin_controller{
 			pub_current_acc_.publish(msg_current_acc_);
 			pub_error_.publish(msg_error_);
 			pub_error_vel_.publish(msg_error_vel_);
+
+			
 
   		}
 

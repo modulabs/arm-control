@@ -23,17 +23,39 @@ elfin:
         - elfin_joint5
         - elfin_joint6
       joint1:
-        pid: {p: 100.0, i: 0, d: 10.0}
+        pid: {p: 100.0, i: 0, d: 20.0} # Kd = 2*sqrt(Kp)
       joint2: 
-        pid: {p: 100.0, i: 0, d: 10.0}
+        pid: {p: 100.0, i: 0, d: 20.0}
       joint3: 
-        pid: {p: 100.0, i: 0, d: 10.0}
+        pid: {p: 100.0, i: 0, d: 20.0}
       joint4: 
-        pid: {p: 100.0, i: 0, d: 10.0}
+        pid: {p: 100.0, i: 0, d: 20.0}
       joint5: 
-        pid: {p: 100.0, i: 0, d: 10.0}
+        pid: {p: 100.0, i: 0, d: 20.0}
       joint6: 
-        pid: {p: 100.0, i: 0, d: 10.0}
+        pid: {p: 100.0, i: 0, d: 20.0}
+    
+    computed_torque_controller:
+      type: elfin_controller/ComputedTorqueController
+      joints:
+        - elfin_joint1
+        - elfin_joint2
+        - elfin_joint3
+        - elfin_joint4
+        - elfin_joint5
+        - elfin_joint6
+      joint1:
+        pid: {p: 100.0, i: 0, d: 20.0}
+      joint2: 
+        pid: {p: 100.0, i: 0, d: 20.0}
+      joint3: 
+        pid: {p: 100.0, i: 0, d: 20.0}
+      joint4: 
+        pid: {p: 100.0, i: 0, d: 20.0}
+      joint5: 
+        pid: {p: 100.0, i: 0, d: 20.0}
+      joint6: 
+        pid: {p: 100.0, i: 0, d: 20.0}
 
       # elfin_joint1:
       #   pid: {p: 100.0, i: 0, d: 10.0}
