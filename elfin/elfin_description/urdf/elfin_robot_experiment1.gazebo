@@ -66,15 +66,4 @@
     </visual>
   </gazebo>  
 
-  <gazebo reference="box">
-    <visual name='visual'>
-     <material>
-       <script>
-         <uri>file://media/materials/scripts/gazebo.material</uri>
-         <name>Gazebo/Orange</name>
-       </script>
-     </material>
-    </visual>
-  </gazebo>  
-
 </robot>

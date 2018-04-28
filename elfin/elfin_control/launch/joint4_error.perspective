@@ -91,7 +91,7 @@
                 },
                 "topics": {
                   "type": "repr",
-                  "repr": "u'/elfin/time_delay_controller/error/data[3]'"
+                  "repr": "u'/elfin/adaptive_impedance_controller/Joint4_Data/data[6]'"
                 },
                 "y_limits": {
                   "type": "repr",
@@ -138,7 +138,7 @@
                 },
                 "topics": {
                   "type": "repr",
-                  "repr": "u'/elfin/time_delay_controller/error_vel/data[3]'"
+                  "repr": "u'/elfin/adaptive_impedance_controller/Joint4_Data/data[7]'"
                 },
                 "y_limits": {
                   "type": "repr",

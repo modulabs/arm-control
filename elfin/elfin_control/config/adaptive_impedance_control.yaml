@@ -1,0 +1,30 @@
+elfin:
+    joint_state_controller:
+      type: joint_state_controller/JointStateController
+      publish_rate: 1000
+    
+    adaptive_impedance_controller:
+      type: arm_controllers/AdaptiveImpedanceController
+      joints:
+        - elfin_joint1
+        - elfin_joint2
+        - elfin_joint3
+        - elfin_joint4
+        - elfin_joint5
+        - elfin_joint6
+      root_link: world
+      #tip_link: elfin_link6
+      #tip_link: elfin_tool_ball
+      tip_link: elfin_ft_sensor_link  
+      joint1:
+        pid: {p: 100.0, i: 0, d: 10.0}
+      joint2: 
+        pid: {p: 100.0, i: 0, d: 10.0}
+      joint3: 
+        pid: {p: 100.0, i: 0, d: 10.0}
+      joint4: 
+        pid: {p: 100.0, i: 0, d: 10.0}
+      joint5: 
+        pid: {p: 100.0, i: 0, d: 10.0}
+      joint6: 
+        pid: {p: 100.0, i: 0, d: 10.0}

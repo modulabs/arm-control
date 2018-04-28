@@ -5,9 +5,7 @@
 
   <xacro:include filename="$(find elfin_description)/urdf/elfin_robot_experiment1.gazebo" />
 
-  <!-- <xacro:include filename="$(find elfin_description)/urdf/elfin_transmission.xacro" /> -->
-
-  <xacro:include filename="$(find elfin_description)/urdf/box.urdf.xacro" />
+  <xacro:include filename="$(find elfin_description)/urdf/elfin_transmission.xacro" />
 
   <xacro:property name="PI" value="3.1415926535897931"/>
 
@@ -111,7 +109,7 @@
   </link>
   <joint
     name="elfin_joint1"
-    type="fixed">
+    type="revolute">
     <origin
       xyz="0 0 0.031"
       rpy="${PI/2} 0 0" />
@@ -169,7 +167,7 @@
   </link>
   <joint
     name="elfin_joint2"
-    type="fixed">
+    type="revolute">
     <origin
       xyz="-0.068808 0.1615 0"
       rpy="0 0 0" />
@@ -227,10 +225,10 @@
   </link>
   <joint
     name="elfin_joint3"
-    type="fixed">
+    type="revolute">
     <origin
       xyz="0 0.266 0"
-      rpy="${-PI+PI/2} 0 0" />
+      rpy="${-PI} 0 0" />
     <parent
       link="elfin_link2" />
     <child
@@ -285,7 +283,7 @@
   </link>
   <joint
     name="elfin_joint4"
-    type="fixed">
+    type="revolute">
     <origin
       xyz="0.068808 -0.10523 0"
       rpy="${PI} 0 0" />
@@ -343,10 +341,10 @@
   </link>
   <joint
     name="elfin_joint5"
-    type="fixed">
+    type="revolute">
     <origin
       xyz="0 0.21877 0"
-      rpy="${-PI+PI/2} 0 0" />
+      rpy="${-PI} 0 0" />
     <parent
       link="elfin_link4" />
     <child
@@ -401,7 +399,7 @@
   </link>
   <joint
     name="elfin_joint6"
-    type="fixed">
+    type="revolute">
     <origin
       xyz="0 -0.1065 0"
       rpy="${-PI} 0 ${-PI}" />
@@ -492,7 +490,7 @@
       
       <surface>
         <friction>
-          <ode mu="0" mu2="0" slip1="1.0" slip2="1.0" />
+          <ode mu="0.4"/>
         </friction>
       </surface>
     </collision>

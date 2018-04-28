@@ -5,6 +5,7 @@ find_package(catkin REQUIRED COMPONENTS
   angles
   controller_interface
   control_msgs
+  geometry_msgs
   urdf
   kdl_parser
   realtime_tools
@@ -17,6 +18,7 @@ catkin_package(
     angles
     controller_interface
     control_msgs
+    geometry_msgs
     urdf
     kdl_parser
     realtime_tools
@@ -26,6 +28,7 @@ catkin_package(
 add_library(${PROJECT_NAME}
   src/time_delay_controller.cpp
   src/gravity_comp_controller.cpp
+  src/adaptive_variable_impedance_controller.cpp
 )
 
 target_link_libraries(${PROJECT_NAME} ${catkin_LIBRARIES})

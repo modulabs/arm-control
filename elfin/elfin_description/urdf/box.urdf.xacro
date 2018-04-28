@@ -1,7 +1,22 @@
 <robot
   name="box" xmlns:xacro="http://www.ros.org/wiki/xacro">
 
-  <joint name="box_base_joint" type="fixed">
+  <xacro:include filename="$(find elfin_description)/urdf/materials.xacro" />
+
+  <gazebo reference="box">
+    <visual name='visual'>
+     <material>
+       <script>
+         <uri>file://media/materials/scripts/gazebo.material</uri>
+         <name>Gazebo/Orange</name>
+       </script>
+     </material>
+    </visual>
+  </gazebo>  
+
+  <link name="world"/>
+
+  <joint name="world_base" type="fixed">
     <origin
       xyz="0 0 0"
       rpy="0 0 0" />
@@ -12,6 +27,8 @@
   </joint>
 
   <link name="box">
+    <static> true </static>
+    
     <visual>
       <origin xyz="0.5 0 0.05" rpy="0 0 0" />
       <geometry>
@@ -29,7 +46,7 @@
     <inertial>
       <mass value="20" />
       <origin xyz="0 0 0" rpy="0 0 0"/>
-      <inertia ixx="0.01" ixy="0" ixz="0" iyy="0.01" iyz="0" izz="0.01" />
+      <inertia ixx="0.1" ixy="0" ixz="0" iyy="0.1" iyz="0" izz="0.1" />
     </inertial>
   </link>
 
