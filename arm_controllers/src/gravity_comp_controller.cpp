@@ -157,7 +157,7 @@ namespace arm_controllers{
 				controller_state_pub_->msg_.error_dot.push_back(0.0);
 				controller_state_pub_->msg_.effort_command.push_back(0.0);
 			}
-
+			
    			return true;
   		}
 
@@ -201,7 +201,7 @@ namespace arm_controllers{
 			{
 				q_cmd_old = q_cmd_(i);
 				q_cmd_(i) = commands[i];
-				q_cmd_(5) = 3.14/3*sin(t/100);
+				// q_cmd_(5) = 3.14/3*sin(t/100);
 				enforceJointLimits(q_cmd_(i), i);
 				qdot_cmd_(i) = ( q_cmd_(i) - q_cmd_old )/dt;
 
@@ -235,7 +235,14 @@ namespace arm_controllers{
 			// torque command
 			for(int i=0; i<n_joints_; i++)
 			{
-				tau_cmd_(i) = G_(i) + kp_[i]*q_error(i) + ki_[i]*q_int_error(i) + kd_[i]*qdot_error(i);// + pid_controllers_[i].computeCommand(q_error_(i), period);
+				tau_cmd_(i) = G_(i) + pid_controllers_[i].computeCommand(q_error_(i), period); // + kp_[i]*q_error(i) + ki_[i]*q_int_error(i) + kd_[i]*qdot_error(i);// 
+
+				if (tau_cmd_(i) >= joint_urdfs_[i]->limits->effort)
+					tau_cmd_(i) = joint_urdfs_[i]->limits->effort;
+				
+				if (tau_cmd_(i) <= -joint_urdfs_[i]->limits->effort)
+					tau_cmd_(i) = -joint_urdfs_[i]->limits->effort;
+
 				joints_[i].setCommand( tau_cmd_(i) );
 			}
 
