@@ -10,6 +10,11 @@ find_package(catkin REQUIRED COMPONENTS
   realtime_tools
 )
 
+# message
+add_message_files(FILES ControllerJointState.msg)
+generate_messages(DEPENDENCIES std_msgs)
+
+# include
 include_directories(include ${Boost_INCLUDE_DIR} ${catkin_INCLUDE_DIRS})
 
 catkin_package(

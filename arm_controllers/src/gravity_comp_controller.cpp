@@ -17,14 +17,17 @@
 
 #include <boost/scoped_ptr.hpp>
 
+#include "arm_controllers/ControllerJointState.h"
+
 namespace arm_controllers{
 
 	class GravityCompController: public controller_interface::Controller<hardware_interface::EffortJointInterface>
 	{
 		public:
-		~GravityCompController() {sub_command_.shutdown();}
+		~GravityCompController() {command_sub_.shutdown();}
 		bool init(hardware_interface::EffortJointInterface* hw, ros::NodeHandle &n)
   		{	
+			loop_count_ = 0;
 			// List of controlled joints
     		if (!n.getParam("joints", joint_names_))
 			{
@@ -134,12 +137,26 @@ namespace arm_controllers{
 				}
 			}
 
-			// command
+			// command subscriber
 			commands_buffer_.writeFromNonRT(std::vector<double>(n_joints_, 0.0));
-			sub_command_ = n.subscribe("command", 1, &GravityCompController::commandCB, this);
+			command_sub_ = n.subscribe<std_msgs::Float64MultiArray>("command", 1, &GravityCompController::commandCB, this);
 
-			// ser
-			//ros::ServiceServer srv_load_gain_ = n.advertiseService("load_gain", &GravityCompController::loadGainCB, this);
+			// Start realtime state publisher
+			controller_state_pub_.reset(
+				new realtime_tools::RealtimePublisher<arm_controllers::ControllerJointState>(n, "state", 1));
+
+			controller_state_pub_->msg_.header.stamp = ros::Time::now();
+			for (size_t i=0; i<n_joints_; i++)
+			{
+				controller_state_pub_->msg_.name.push_back(joint_names_[i]);
+				controller_state_pub_->msg_.command.push_back(0.0);
+				controller_state_pub_->msg_.command_dot.push_back(0.0);
+				controller_state_pub_->msg_.state.push_back(0.0);
+				controller_state_pub_->msg_.state_dot.push_back(0.0);
+				controller_state_pub_->msg_.error.push_back(0.0);
+				controller_state_pub_->msg_.error_dot.push_back(0.0);
+				controller_state_pub_->msg_.effort_command.push_back(0.0);
+			}
 
    			return true;
   		}
@@ -175,12 +192,19 @@ namespace arm_controllers{
   		void update(const ros::Time& time, const ros::Duration& period)
   		{
 			std::vector<double> & commands = *commands_buffer_.readFromRT();
-			
+			double dt = period.toSec();
+			double q_cmd_old;
+
+			static double t = 0;
 			// get joint states
 			for (size_t i=0; i<n_joints_; i++)
 			{
+				q_cmd_old = q_cmd_(i);
 				q_cmd_(i) = commands[i];
+				q_cmd_(5) = 3.14/3*sin(t/100);
 				enforceJointLimits(q_cmd_(i), i);
+				qdot_cmd_(i) = ( q_cmd_(i) - q_cmd_old )/dt;
+
 				q_(i) = joints_[i].getPosition();
 				qdot_(i) = joints_[i].getVelocity();
 
@@ -203,6 +227,7 @@ namespace arm_controllers{
 					q_error_(i) = q_cmd_(i) - q_(i);
 				}
 			}
+			t += dt;
 			
 			// compute gravity torque
 			id_solver_->JntToGravity(q_, G_);
@@ -210,9 +235,31 @@ namespace arm_controllers{
 			// torque command
 			for(int i=0; i<n_joints_; i++)
 			{
-				tau_cmd_(i) = G_(i) + pid_controllers_[i].computeCommand(q_error_(i), period);
+				tau_cmd_(i) = G_(i) + kp_[i]*q_error(i) + ki_[i]*q_int_error(i) + kd_[i]*qdot_error(i);// + pid_controllers_[i].computeCommand(q_error_(i), period);
 				joints_[i].setCommand( tau_cmd_(i) );
 			}
+
+			// publish
+			if (loop_count_ % 10 == 0)
+			{
+				if (controller_state_pub_->trylock())
+				{
+					controller_state_pub_->msg_.header.stamp = time;
+					for(int i=0; i<n_joints_; i++)
+					{
+						controller_state_pub_->msg_.command[i] = q_cmd_(i);
+						controller_state_pub_->msg_.command_dot[i] = qdot_cmd_(i);
+						controller_state_pub_->msg_.state[i] = q_(i);
+						controller_state_pub_->msg_.state_dot[i] = qdot_(i);
+						controller_state_pub_->msg_.error[i] = q_error_(i);
+						controller_state_pub_->msg_.error_dot[i] = qdot_cmd_(i) - qdot_(i);
+						controller_state_pub_->msg_.effort_command[i] = tau_cmd_(i);
+					}
+					controller_state_pub_->unlockAndPublish();
+				}
+			}
+			
+			
   		}
 
   		void stopping(const ros::Time& time) { }
@@ -222,17 +269,18 @@ namespace arm_controllers{
 			// Check that this joint has applicable limits
 			if (joint_urdfs_[index]->type == urdf::Joint::REVOLUTE || joint_urdfs_[index]->type == urdf::Joint::PRISMATIC)
 			{
-			if( command > joint_urdfs_[index]->limits->upper ) // above upper limnit
-			{
-				command = joint_urdfs_[index]->limits->upper;
-			}
-			else if( command < joint_urdfs_[index]->limits->lower ) // below lower limit
-			{
-				command = joint_urdfs_[index]->limits->lower;
-			}
+				if( command > joint_urdfs_[index]->limits->upper ) // above upper limnit
+				{
+					command = joint_urdfs_[index]->limits->upper;
+				}
+				else if( command < joint_urdfs_[index]->limits->lower ) // below lower limit
+				{
+					command = joint_urdfs_[index]->limits->lower;
+				}
 			}
 		}
 	private:
+		int loop_count_;
 		// joint handles
 		unsigned int n_joints_;
 		std::vector<std::string> joint_names_;
@@ -250,6 +298,9 @@ namespace arm_controllers{
   		std::vector<control_toolbox::Pid> pid_controllers_;       /**< Internal PID controllers. */
 
 		// cmd, state
+		// boost::scoped_ptr<
+		// 	realtime_tools::RealtimePublisher<
+		// 	control_msgs::JointControllerState> > controller_state_publisher_ ;
 		realtime_tools::RealtimeBuffer<std::vector<double> > commands_buffer_;
 		KDL::JntArray tau_cmd_;
 		KDL::JntArray q_cmd_, qdot_cmd_, qddot_cmd_;
@@ -257,7 +308,10 @@ namespace arm_controllers{
 		KDL::JntArray q_error_;
 
 		// topic
-		ros::Subscriber sub_command_;
+		ros::Subscriber command_sub_;
+		boost::scoped_ptr<
+			realtime_tools::RealtimePublisher<
+				arm_controllers::ControllerJointState> > controller_state_pub_;
 	};
 
 }
