@@ -19,6 +19,10 @@
 
 #include "arm_controllers/ControllerJointState.h"
 
+#define PI 3.141592
+#define D2R PI/180.0
+#define R2D 180.0/PI
+
 namespace arm_controllers{
 
 	class GravityCompController: public controller_interface::Controller<hardware_interface::EffortJointInterface>
@@ -124,6 +128,7 @@ namespace arm_controllers{
 			qdot_.data = Eigen::VectorXd::Zero(n_joints_);
 
 			q_error_.data = Eigen::VectorXd::Zero(n_joints_);
+			qdot_error_.data = Eigen::VectorXd::Zero(n_joints_);
 
 			// pid gains
 			pid_controllers_.resize(n_joints_);
@@ -156,6 +161,8 @@ namespace arm_controllers{
 				controller_state_pub_->msg_.error.push_back(0.0);
 				controller_state_pub_->msg_.error_dot.push_back(0.0);
 				controller_state_pub_->msg_.effort_command.push_back(0.0);
+				controller_state_pub_->msg_.effort_gravity.push_back(0.0);
+				controller_state_pub_->msg_.effort_feedback.push_back(0.0);
 			}
 			
    			return true;
@@ -200,10 +207,29 @@ namespace arm_controllers{
 			for (size_t i=0; i<n_joints_; i++)
 			{
 				q_cmd_old = q_cmd_(i);
-				q_cmd_(i) = commands[i];
-				// q_cmd_(5) = 3.14/3*sin(t/100);
+				
+				if (i==3)
+				{
+					q_cmd_(i) = 45*D2R*sin(PI*t);
+				}
+				// else if (i==4)
+				// {
+				// 	q_cmd_(4) = 90*D2R;
+				// }
+				else
+					q_cmd_(i) = commands[i];
+
 				enforceJointLimits(q_cmd_(i), i);
+				// if (i==5)
+				// {
+				// 	ROS_INFO("q_cmd after enforceJointLimits = %f", q_cmd_(5)*R2D);
+				// }
 				qdot_cmd_(i) = ( q_cmd_(i) - q_cmd_old )/dt;
+
+				// if (i==5)
+				// {
+					// ROS_INFO("qdot_cmd = %f, %f, %f, %f", qdot_cmd_(5), q_cmd_(5), q_cmd_old,dt);
+				// }
 
 				q_(i) = joints_[i].getPosition();
 				qdot_(i) = joints_[i].getVelocity();
@@ -222,20 +248,28 @@ namespace arm_controllers{
 				{
 					q_error_(i) = angles::shortest_angular_distance(q_(i), q_cmd_(i));
 				}
-				else //prismatic
+				else // prismatic
 				{
 					q_error_(i) = q_cmd_(i) - q_(i);
 				}
+				qdot_error_(i) = qdot_cmd_(i) - qdot_(i);
 			}
 			t += dt;
 			
+			// static int td = 0;
+			// if (td==1000)
+			// {
+			// 	ROS_INFO("qdot_cmd = %f, q_cmd = %f, q_cmd_old = %f", qdot_cmd_(5)*R2D, q_cmd_(5)*R2D, q_cmd_old*R2D);
+			// 	td = 0;
+			// }
+			// td++;
 			// compute gravity torque
 			id_solver_->JntToGravity(q_, G_);
 
 			// torque command
 			for(int i=0; i<n_joints_; i++)
 			{
-				tau_cmd_(i) = G_(i) + pid_controllers_[i].computeCommand(q_error_(i), period); // + kp_[i]*q_error(i) + ki_[i]*q_int_error(i) + kd_[i]*qdot_error(i);// 
+				tau_cmd_(i) = G_(i) + pid_controllers_[i].computeCommand(q_error_(i), qdot_error_(i), period); // + kp_[i]*q_error(i) + ki_[i]*q_int_error(i) + kd_[i]*qdot_error(i);// 
 
 				if (tau_cmd_(i) >= joint_urdfs_[i]->limits->effort)
 					tau_cmd_(i) = joint_urdfs_[i]->limits->effort;
@@ -254,13 +288,15 @@ namespace arm_controllers{
 					controller_state_pub_->msg_.header.stamp = time;
 					for(int i=0; i<n_joints_; i++)
 					{
-						controller_state_pub_->msg_.command[i] = q_cmd_(i);
-						controller_state_pub_->msg_.command_dot[i] = qdot_cmd_(i);
-						controller_state_pub_->msg_.state[i] = q_(i);
-						controller_state_pub_->msg_.state_dot[i] = qdot_(i);
-						controller_state_pub_->msg_.error[i] = q_error_(i);
-						controller_state_pub_->msg_.error_dot[i] = qdot_cmd_(i) - qdot_(i);
+						controller_state_pub_->msg_.command[i] = R2D*q_cmd_(i);
+						controller_state_pub_->msg_.command_dot[i] = R2D*qdot_cmd_(i);
+						controller_state_pub_->msg_.state[i] = R2D*q_(i);
+						controller_state_pub_->msg_.state_dot[i] = R2D*qdot_(i);
+						controller_state_pub_->msg_.error[i] = R2D*q_error_(i);
+						controller_state_pub_->msg_.error_dot[i] = R2D*qdot_error_(i);
 						controller_state_pub_->msg_.effort_command[i] = tau_cmd_(i);
+						controller_state_pub_->msg_.effort_gravity[i] = G_(i);
+						controller_state_pub_->msg_.effort_feedback[i] = tau_cmd_(i) - G_(i);
 					}
 					controller_state_pub_->unlockAndPublish();
 				}
@@ -312,7 +348,7 @@ namespace arm_controllers{
 		KDL::JntArray tau_cmd_;
 		KDL::JntArray q_cmd_, qdot_cmd_, qddot_cmd_;
 		KDL::JntArray q_, qdot_;
-		KDL::JntArray q_error_;
+		KDL::JntArray q_error_, qdot_error_;
 
 		// topic
 		ros::Subscriber command_sub_;
