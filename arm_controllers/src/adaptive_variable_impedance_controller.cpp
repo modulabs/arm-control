@@ -26,7 +26,7 @@
 #define D2R PI/180.0
 #define R2D 180.0/PI
 #define JointMax 6
-#define SaveDataMax 8
+#define SaveDataMax 7
 
 namespace arm_controllers{
 
@@ -161,14 +161,24 @@ namespace arm_controllers{
 			Xe_dot_ = 0.0;
 			Xe_ddot_ = 0.0;
 			Fd_ = 0.0;
+			Fd_temp_ = 0.0;
 			Fd_old_ = 0.0;
 			Fe_ = 0.0;
 			Fe_old_ = 0.0;
 			M_ = 0.0;
 			B_ = 0.0;
 			del_B_ = 0.0;
+			B_buffer_ = 0.0;
 			PI_ = 0.0;
 			PI_old_ = 0.0;
+
+			filt_old_ = 0.0;
+			filt_ = 0.0;
+			tau_ = 1.0/(2*PI*9.0);
+
+			f_cur_buffer_ = 0.0;
+
+			experiment_mode_ = 0;
 
 			std::vector<double> Mbar(n_joints_), Ramda(n_joints_), Alpha(n_joints_), Omega(n_joints_);
 			for (size_t i=0; i<n_joints_; i++)
@@ -216,7 +226,7 @@ namespace arm_controllers{
 				}
 			}
 
-			if (!n.getParam("/elfin/adaptive_impedance_controller/aic/fd", Fd_))
+			if (!n.getParam("/elfin/adaptive_impedance_controller/aic/fd", Fd_temp_))
 			{
 				ROS_ERROR("Cannot find aci/fd");
 				return false;
@@ -234,17 +244,18 @@ namespace arm_controllers{
 				return false;
 			}
 
+			if (!n.getParam("/elfin/adaptive_impedance_controller/mode", experiment_mode_))
+			{
+				ROS_ERROR("Cannot find mode");
+				return false;
+			}
+
 			// command
 			sub_q_cmd_ = n.subscribe("command", 1, &AdaptiveImpedanceController::commandCB, this);
 			sub_forcetorque_sensor_ = n.subscribe<geometry_msgs::WrenchStamped>("/elfin/elfin/ft_sensor_topic", 1, &AdaptiveImpedanceController::updateFTsensor, this);
-/*
-			pub_Joint1_Data_ = n.advertise<std_msgs::Float64MultiArray>("Joint1_Data", 1000);
-			pub_Joint2_Data_ = n.advertise<std_msgs::Float64MultiArray>("Joint2_Data", 1000);
-			pub_Joint3_Data_ = n.advertise<std_msgs::Float64MultiArray>("Joint3_Data", 1000);
-			pub_Joint4_Data_ = n.advertise<std_msgs::Float64MultiArray>("Joint4_Data", 1000);
-			pub_Joint5_Data_ = n.advertise<std_msgs::Float64MultiArray>("Joint5_Data", 1000);
-			pub_Joint6_Data_ = n.advertise<std_msgs::Float64MultiArray>("Joint6_Data", 1000);
-*/
+
+			pub_SaveData_ = n.advertise<std_msgs::Float64MultiArray>("SaveData", 1000);
+
    			return true;
   		}
 
@@ -261,9 +272,6 @@ namespace arm_controllers{
 
 			time_ = 0.0;
 			total_time_ = 0.0;
-
-			mag_ = 45.0 * D2R;
-			feq_ = 0.3;
 
 			ROS_INFO("Starting Adaptive Impedance Controller");
 		}
@@ -287,11 +295,14 @@ namespace arm_controllers{
 			geometry_msgs::Wrench f_meas = msg->wrench;
 
 			f_cur_[0] = f_meas.force.x;
-			f_cur_[1] = f_meas.force.y;
+			f_cur_buffer_ = f_meas.force.y;
 			f_cur_[2] = f_meas.force.z;
 			f_cur_[3] = f_meas.torque.x;
 			f_cur_[4] = f_meas.torque.y;
 			f_cur_[5] = f_meas.torque.z;
+
+			if (experiment_mode_ == 1 || experiment_mode_ == 2)
+				f_cur_[1] = first_order_lowpass_filter();
 		}
 
 		// load gain is not permitted during controller loading?
@@ -302,18 +313,6 @@ namespace arm_controllers{
 
   		void update(const ros::Time& time, const ros::Duration& period)
   		{
-			//ROS_INFO("force_x = %.5f, force_y = %.5f, force_z = %.5f\n", f_cur_[0], f_cur_[1], f_cur_[2]);
-			//ROS_INFO("torque_x = %.5f, torque_y = %.5f, torque_z = %.5f\n", f_cur_[3], f_cur_[4], f_cur_[5]);
-
-			static int i=0;
-			i++;
-			if(i==500)
-			{
-				ROS_INFO("force y = %.5f", f_cur_(1));
-				//ROS_INFO("force y = %.5f", Fe_);
-				i=0;
-			}
-
 			// simple trajectory interpolation from joint command setpoint
 			dt_ = period.toSec();
 
@@ -418,43 +417,28 @@ namespace arm_controllers{
 
 			tau_cmd_old_.data = tau_cmd_.data;
 			qdot_old_.data = qdot_.data;
-/*
-			for(size_t i=0; i<JointMax; i++)
+
+			KDL::Frame Xdes;
+
+			fk_solver_->JntToCart(q_cmd_, Xdes);
+
+			SaveData_[0] = total_time_;
+			SaveData_[1] = 0.122;
+			SaveData_[2] = Xdes.p(2);
+			SaveData_[3] = Fd_;
+			SaveData_[4] = f_cur_(1);
+			SaveData_[5] = f_cur_buffer_;
+			SaveData_[6] = B_buffer_;
+
+			msg_SaveData_.data.clear();
+
+			for (size_t i = 0; i < SaveDataMax; i++)
 			{
-				JointData_[i][0] = time_;
-				JointData_[i][1] = q_cmd_(i)*R2D;
-				JointData_[i][2] = q_(i)*R2D;	
-				JointData_[i][3] = qdot_cmd_(i)*R2D;
-				JointData_[i][4] = qdot_(i)*R2D;
-				JointData_[i][5] = tau_cmd_(i);
-				JointData_[i][6] = q_error(i)*R2D;
-				JointData_[i][7] = q_error_dot(i)*R2D;
+				msg_SaveData_.data.push_back(SaveData_[i]);
 			}
-				
-			msg_Joint1_Data_.data.clear();
-			msg_Joint2_Data_.data.clear();
-			msg_Joint3_Data_.data.clear();
-			msg_Joint4_Data_.data.clear();
-			msg_Joint5_Data_.data.clear();
-			msg_Joint6_Data_.data.clear();
 
-			for(size_t i=0; i<SaveDataMax; i++)
-			{
-				msg_Joint1_Data_.data.push_back(JointData_[0][i]);
-				msg_Joint2_Data_.data.push_back(JointData_[1][i]);
-				msg_Joint3_Data_.data.push_back(JointData_[2][i]);
-				msg_Joint4_Data_.data.push_back(JointData_[3][i]);
-				msg_Joint5_Data_.data.push_back(JointData_[4][i]);
-				msg_Joint6_Data_.data.push_back(JointData_[5][i]);
-			}						
+			pub_SaveData_.publish(msg_SaveData_);
 
-			pub_Joint1_Data_.publish(msg_Joint1_Data_);
-			pub_Joint2_Data_.publish(msg_Joint2_Data_);
-			pub_Joint3_Data_.publish(msg_Joint3_Data_);
-			pub_Joint4_Data_.publish(msg_Joint4_Data_);
-			pub_Joint5_Data_.publish(msg_Joint5_Data_);
-			pub_Joint6_Data_.publish(msg_Joint6_Data_);	
-*/
 			time_ = time_ + dt_;
 			total_time_ = total_time_ + dt_;				
   		}
@@ -521,7 +505,7 @@ namespace arm_controllers{
 			{
 				if(i == 2)
 				{
-					target_vel(i) = trajectory_generator_vel(start.p(i), 0.1, 10.0);
+					target_vel(i) = trajectory_generator_vel(start.p(i), 0.122, 10.0);
 				}
 				else
 				{
@@ -544,8 +528,13 @@ namespace arm_controllers{
 		void task_contactspace()
 		{
 			KDL::Frame start;
-			
-			fk_solver_->JntToCart(q_init_, start);
+
+			if (experiment_mode_ == 0 || experiment_mode_ == 1)
+				Fd_ = Fd_temp_;
+			else if (experiment_mode_ == 2)
+				Fd_ = Fd_temp_ * 1 / 5 * sin(2 * PI * 0.2 * total_time_) + Fd_temp_;
+
+				fk_solver_->JntToCart(q_init_, start);
 
 			for (size_t i = 0; i < 6; i++)
 			{
@@ -557,6 +546,7 @@ namespace arm_controllers{
 				{
 					Fe_ = f_cur_[1];
 					PI_ = PI_old_ + dt_ * (Fd_old_ - Fe_old_) / B_;
+					B_buffer_ = B_ + del_B_;
 					Xc_ddot_(i) = 1/M_*((Fe_ - Fd_) - (B_ + del_B_)*Xc_dot_old_(i));
 					Xc_dot_(i) = Xc_dot_old_(i) + Xc_ddot_(i)*dt_;
 					del_B_ = B_ / Xc_dot_(i) * PI_;
@@ -626,6 +616,14 @@ namespace arm_controllers{
 			return 6.0*dA3*time_ + 12.0*dA4*time_*time_ + 20.0*dA5*time_*time_*time_;
 		}		
 
+		double first_order_lowpass_filter()
+		{
+			filt_ = (tau_ * filt_old_ + dt_*f_cur_buffer_)/(tau_ + dt_);
+			filt_old_ = filt_;
+
+			return filt_;
+		}
+
 	private:
 		// joint handles
 		unsigned int n_joints_;
@@ -654,45 +652,37 @@ namespace arm_controllers{
 		KDL::JntArray q_cmd_sp_;
 		KDL::JntArray q_, qdot_, qdot_old_, qddot_;
 		KDL::Wrench f_cur_;
+		double f_cur_buffer_;
 
 		KDL::Twist Xc_dot_, Xc_dot_old_, Xc_ddot_;
 
 		double Xr_dot_, Xe_dot_;
 		double Xe_ddot_;
 
-		double Fd_, Fd_old_, Fe_, Fe_old_;
-		double M_, B_, del_B_;
+		double Fd_, Fd_temp_, Fd_old_, Fe_, Fe_old_;
+		double M_, B_, del_B_, B_buffer_;
 		double PI_, PI_old_;
 
 		double dt_;
 		double time_;
 		double total_time_;
 
-		double mag_;
-		double feq_;
+		double filt_old_;
+		double filt_;
+		double tau_;
+
+		int experiment_mode_;
 
 		// topic
 		ros::Subscriber sub_q_cmd_;
 		ros::Subscriber sub_forcetorque_sensor_;
-/*
-		double JointData_[JointMax][SaveDataMax];
 
-		ros::Publisher pub_Joint1_Data_;
-		ros::Publisher pub_Joint2_Data_;
-		ros::Publisher pub_Joint3_Data_;
-		ros::Publisher pub_Joint4_Data_;
-		ros::Publisher pub_Joint5_Data_;
-		ros::Publisher pub_Joint6_Data_;
+		double SaveData_[SaveDataMax];
 
-		std_msgs::Float64MultiArray msg_Joint1_Data_;
-		std_msgs::Float64MultiArray msg_Joint2_Data_;
-		std_msgs::Float64MultiArray msg_Joint3_Data_;
-		std_msgs::Float64MultiArray msg_Joint4_Data_;
-		std_msgs::Float64MultiArray msg_Joint5_Data_;
-		std_msgs::Float64MultiArray msg_Joint6_Data_;
-*/				
+		ros::Publisher pub_SaveData_;
+
+		std_msgs::Float64MultiArray msg_SaveData_;			
 	};
-
 }
 
 PLUGINLIB_EXPORT_CLASS(arm_controllers::AdaptiveImpedanceController, controller_interface::ControllerBase)

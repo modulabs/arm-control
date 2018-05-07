@@ -487,12 +487,6 @@
       <geometry>
         <sphere radius="0.02"/>
       </geometry>
-      
-      <surface>
-        <friction>
-          <ode mu="0.1"/>
-        </friction>
-      </surface>
     </collision>
 
     <visual>

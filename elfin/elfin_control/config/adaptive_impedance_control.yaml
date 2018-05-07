@@ -32,5 +32,10 @@ elfin:
       joint7:
         tdc: {mbar: 0.0, r: 0.0, a: 0.0, w: 0.0}
 
-      aic: {fd: 20.0, m: 20.0, b: 800.0}
-      # aic: {fd: 5.0, m: 5.0, b: 80.0}
+      aic: {fd: 20.0, m: 5.0, b: 300.0}
+
+      # mode = 0 -> No Filter, Fd(fixed)
+      # mode = 1 -> Filter, Fd(fixed)
+      # mode = 2 -> Filter, Fd(sin)
+
+      mode: 2
