@@ -14,6 +14,9 @@
 #include <kdl/kdl.hpp>
 #include <kdl/chain.hpp>
 #include <kdl/chaindynparam.hpp>
+#include <kdl/chainfksolverpos_recursive.hpp>
+#include <kdl/chainiksolvervel_pinv.hpp>
+#include <kdl/chainiksolverpos_nr_jl.hpp>
 #include <kdl_parser/kdl_parser.hpp>
 #include <tf_conversions/tf_kdl.h>
 
@@ -119,83 +122,129 @@ namespace arm_controllers{
 			
 			// inverse dynamics solver
 			id_solver_.reset( new KDL::ChainDynParam(kdl_chain_, gravity_) );
+			fk_solver_.reset(new KDL::ChainFkSolverPos_recursive(kdl_chain_));
+			ik_vel_solver_.reset(new KDL::ChainIkSolverVel_pinv(kdl_chain_));
+			//ik_pos_solver_.reset(new KDL::ChainIkSolverPos_NR_JL(kdl_chain_, fk_solver_, ik_vel_solver_));
 
 			// command and state
 			tau_cmd_.data = Eigen::VectorXd::Zero(n_joints_);
+			tau_cmd_old_.data = Eigen::VectorXd::Zero(n_joints_);
 			q_cmd_sp_.data = Eigen::VectorXd::Zero(n_joints_);
 			q_cmd_.data = Eigen::VectorXd::Zero(n_joints_);
+			q_cmd_old_.data = Eigen::VectorXd::Zero(n_joints_);
 			qdot_cmd_.data = Eigen::VectorXd::Zero(n_joints_);
+			qdot_cmd_old_.data = Eigen::VectorXd::Zero(n_joints_);
 			qddot_cmd_.data = Eigen::VectorXd::Zero(n_joints_);
+			q_cmd_end_.data = Eigen::VectorXd::Zero(n_joints_);
 			
 			q_.data = Eigen::VectorXd::Zero(n_joints_);
+			q_init_.data = Eigen::VectorXd::Zero(n_joints_);
 			qdot_.data = Eigen::VectorXd::Zero(n_joints_);
+			qdot_old_.data = Eigen::VectorXd::Zero(n_joints_);
+			qddot_.data = Eigen::VectorXd::Zero(n_joints_);
 
-			// limit [to do] read from parameter
-			q_limit_min_.resize(n_joints_); q_limit_max_.resize(n_joints_);
-			q_limit_min_.data << -90*KDL::deg2rad, -90*KDL::deg2rad, -90*KDL::deg2rad, -90*KDL::deg2rad, -90*KDL::deg2rad, -90*KDL::deg2rad;
-			q_limit_max_.data << 90*KDL::deg2rad, 90*KDL::deg2rad, 90*KDL::deg2rad, 90*KDL::deg2rad, 90*KDL::deg2rad, 90*KDL::deg2rad; 
-			qdot_limit_.resize(n_joints_);	
-			qdot_limit_.data << 90*KDL::deg2rad, 90*KDL::deg2rad, 90*KDL::deg2rad, 90*KDL::deg2rad, 90*KDL::deg2rad, 90*KDL::deg2rad;
-			qddot_limit_.resize(n_joints_);
-			qddot_limit_.data << 90*KDL::deg2rad, 90*KDL::deg2rad, 90*KDL::deg2rad, 90*KDL::deg2rad, 90*KDL::deg2rad, 90*KDL::deg2rad;
-			
+			for (size_t i = 0; i < 6; i++)
+			{
+				Xc_dot_(i) = 0.0;
+				Xc_dot_old_(i) = 0.0;
+				Xc_ddot_(i) = 0.0;
+			}
+
 			// gains
-			Kp_.resize(n_joints_);
-			Kd_.resize(n_joints_);
-			Ki_.resize(n_joints_);
-			q_error_integral_.resize(n_joints_);
-			q_integral_min_ = .0;
-			q_integral_max_ = .0;	// [to do] assign proper value
+			Mbar_.resize(n_joints_);
+			Mbar_dot_.resize(n_joints_);
+			Ramda_.resize(n_joints_);
+			Alpha_.resize(n_joints_);
+			Omega_.resize(n_joints_);
 
-			std::vector<double> Kp(n_joints_), Ki(n_joints_), Kd(n_joints_);
+			Xr_dot_ = 0.0;
+			Xe_dot_ = 0.0;
+			Xe_ddot_ = 0.0;
+			Fd_ = 0.0;
+			Fd_old_ = 0.0;
+			Fe_ = 0.0;
+			Fe_old_ = 0.0;
+			M_ = 0.0;
+			B_ = 0.0;
+			del_B_ = 0.0;
+			PI_ = 0.0;
+			PI_old_ = 0.0;
+
+			std::vector<double> Mbar(n_joints_), Ramda(n_joints_), Alpha(n_joints_), Omega(n_joints_);
 			for (size_t i=0; i<n_joints_; i++)
 			{
 				std::string si = boost::lexical_cast<std::string>(i+1);
-				if ( n.getParam("/elfin/adaptive_impedance_controller/joint" + si + "/pid/p", Kp[i]) )
+				if ( n.getParam("/elfin/adaptive_impedance_controller/joint" + si + "/tdc/mbar", Mbar[i]) )
 				{
-					Kp_(i) = Kp[i];
+					Mbar_(i) = Mbar[i];
 				}
 				else
 				{
-					std::cout << "/elfin/adaptive_impedance_controller/joint" + si + "/pid/p" << std::endl;
-					ROS_ERROR("Cannot find pid/p gain");
+					std::cout << "/elfin/adaptive_impedance_controller/joint" + si + "/tdc/mbar" << std::endl;
+					ROS_ERROR("Cannot find tdc/mbar gain");
 					return false;
 				}
 
-				if ( n.getParam("/elfin/adaptive_impedance_controller/joint" + si + "/pid/i", Ki[i]) )
+				if ( n.getParam("/elfin/adaptive_impedance_controller/joint" + si + "/tdc/r", Ramda[i]) )
 				{
-					Ki_(i) = Ki[i];
+					Ramda_(i) = Ramda[i];
 				}
 				else
 				{
-					ROS_ERROR("Cannot find pid/i gain");
+					ROS_ERROR("Cannot find tdc/r gain");
 					return false;
 				}
 
-				if ( n.getParam("/elfin/adaptive_impedance_controller/joint" + si + "/pid/d", Kd[i]) )
+				if ( n.getParam("/elfin/adaptive_impedance_controller/joint" + si + "/tdc/a", Alpha[i]) )
 				{
-					Kd_(i) = Kd[i];
+					Alpha_(i) = Alpha[i];
 				}
 				else
 				{
-					ROS_ERROR("Cannot find pid/d gain");
+					ROS_ERROR("Cannot find tdc/a gain");
 					return false;
 				}
-				
-				q_error_integral_(i) = .0;
+
+				if ( n.getParam("/elfin/adaptive_impedance_controller/joint" + si + "/tdc/w", Omega[i]) )
+				{
+					Omega_(i) = Omega[i];
+				}
+				else
+				{
+					ROS_ERROR("Cannot find tdc/w gain");
+					return false;
+				}
+			}
+
+			if (!n.getParam("/elfin/adaptive_impedance_controller/aic/fd", Fd_))
+			{
+				ROS_ERROR("Cannot find aci/fd");
+				return false;
+			}
+
+			if (!n.getParam("/elfin/adaptive_impedance_controller/aic/m", M_))
+			{
+				ROS_ERROR("Cannot find aci/m");
+				return false;
+			}
+
+			if (!n.getParam("/elfin/adaptive_impedance_controller/aic/b", B_))
+			{
+				ROS_ERROR("Cannot find aci/b");
+				return false;
 			}
 
 			// command
 			sub_q_cmd_ = n.subscribe("command", 1, &AdaptiveImpedanceController::commandCB, this);
 			sub_forcetorque_sensor_ = n.subscribe<geometry_msgs::WrenchStamped>("/elfin/elfin/ft_sensor_topic", 1, &AdaptiveImpedanceController::updateFTsensor, this);
-
+/*
 			pub_Joint1_Data_ = n.advertise<std_msgs::Float64MultiArray>("Joint1_Data", 1000);
 			pub_Joint2_Data_ = n.advertise<std_msgs::Float64MultiArray>("Joint2_Data", 1000);
 			pub_Joint3_Data_ = n.advertise<std_msgs::Float64MultiArray>("Joint3_Data", 1000);
 			pub_Joint4_Data_ = n.advertise<std_msgs::Float64MultiArray>("Joint4_Data", 1000);
 			pub_Joint5_Data_ = n.advertise<std_msgs::Float64MultiArray>("Joint5_Data", 1000);
 			pub_Joint6_Data_ = n.advertise<std_msgs::Float64MultiArray>("Joint6_Data", 1000);
-
+*/
    			return true;
   		}
 
@@ -206,11 +255,15 @@ namespace arm_controllers{
 			{
 				ROS_INFO("JOINT %d", (int)i);
 				q_(i) = joints_[i].getPosition();
+				q_init_(i) = q_(i);
 				qdot_(i) = joints_[i].getVelocity();
-				q_error_integral_(i) = .0;
 			}
 
-			count_ = 0.0;
+			time_ = 0.0;
+			total_time_ = 0.0;
+
+			mag_ = 45.0 * D2R;
+			feq_ = 0.3;
 
 			ROS_INFO("Starting Adaptive Impedance Controller");
 		}
@@ -252,24 +305,54 @@ namespace arm_controllers{
 			//ROS_INFO("force_x = %.5f, force_y = %.5f, force_z = %.5f\n", f_cur_[0], f_cur_[1], f_cur_[2]);
 			//ROS_INFO("torque_x = %.5f, torque_y = %.5f, torque_z = %.5f\n", f_cur_[3], f_cur_[4], f_cur_[5]);
 
-			// simple trajectory interpolation from joint command setpoint
-			double dt = period.toSec();
-			double qdot_cmd;
-			
-			static double t=.0;
-			for (size_t i=0; i<n_joints_; i++)
+			static int i=0;
+			i++;
+			if(i==500)
 			{
-				
-				double dq = q_cmd_sp_(i) - q_cmd_(i);	// [to do] shortest distance using angle
-				double qdot_cmd = KDL::sign(dq) * KDL::min( fabs(dq/dt), fabs(qdot_limit_(i)) );
-				double ddq = qdot_cmd - qdot_cmd_(i);	// [to do] shortest distance using angle
-				double qddot_cmd = KDL::sign(ddq) * KDL::min( fabs(ddq/dt), fabs(qddot_limit_(i)) );
-				qdot_cmd_(i) += qddot_cmd*dt;
-				q_cmd_(i) += qdot_cmd*dt;
-				q_cmd_(i) = 30*KDL::deg2rad*sin(M_PI*t);
-				//q_cmd_(i) = 0;
+				ROS_INFO("force y = %.5f", f_cur_(1));
+				//ROS_INFO("force y = %.5f", Fe_);
+				i=0;
 			}
-			t = t + 0.001;
+
+			// simple trajectory interpolation from joint command setpoint
+			dt_ = period.toSec();
+
+			if(total_time_ < 5.0)
+			{
+				task_init();	
+			}
+			else if(total_time_ >= 5.0 && total_time_ < 6.0)
+			{
+				task_via();
+			}
+			else if(total_time_ >= 6.0 && total_time_ < 16.0)
+			{
+				task_ready();
+			}
+			else if (total_time_ >= 16.0 && total_time_ < 17.0)
+			{
+				task_via();
+			}
+			else if (total_time_ >= 17.0 && total_time_ < 27.0)
+			{
+				task_freespace();
+			}
+			else if (total_time_ >= 27.0 && total_time_ < 28.0)
+			{
+				task_via();
+			}
+			else if (total_time_ >= 28.0 && total_time_ < 48.0)
+			{
+				task_contactspace();
+			}
+			else if (total_time_ >= 48.0 && total_time_ < 49.0)
+			{
+				task_via();
+			}
+			else if (total_time_ >= 49.0 && total_time_ < 59.0)
+			{
+				task_homming();
+			}
 
 			// get joint states
 			for (size_t i=0; i<n_joints_; i++)
@@ -277,38 +360,68 @@ namespace arm_controllers{
 				q_(i) = joints_[i].getPosition();
 				qdot_(i) = joints_[i].getVelocity();
 			}
-			
-			// compute gravity torque
-			id_solver_->JntToGravity(q_, G_);
+
+			qddot_.data = (qdot_.data - qdot_old_.data) / dt_;
 
 			// error
 			KDL::JntArray q_error;
 			KDL::JntArray q_error_dot;
+			KDL::JntArray ded;
+			KDL::JntArray tde;
+			KDL::JntArray s;
+
+			q_error.data = Eigen::VectorXd::Zero(n_joints_);
+			q_error_dot.data = Eigen::VectorXd::Zero(n_joints_);
+			ded.data = Eigen::VectorXd::Zero(n_joints_);
+			tde.data = Eigen::VectorXd::Zero(n_joints_);
+			s.data = Eigen::VectorXd::Zero(n_joints_);
+
+			double db = 0.001;
 
 			q_error.data = q_cmd_.data - q_.data;
 			q_error_dot.data = qdot_cmd_.data - qdot_.data;
-			q_error_integral_.data += q_error.data;
-			
-			// integral saturation
-			for (size_t i; i<n_joints_; i++)
+
+			for(size_t i=0; i<n_joints_; i++)
 			{
-				if (q_error_integral_(i) > q_integral_max_)
-					q_error_integral_(i) = q_integral_max_;
-				else if (q_error_integral_(i) < -q_integral_max_)
-					q_error_integral_(i) = -q_integral_max_;
+				s(i) = q_error_dot(i) + Ramda_(i)*q_error(i);
+
+				if(db < Mbar_(i) && Mbar_(i) > Ramda_(i)/Alpha_(i))
+				{
+					Mbar_dot_(i) = Alpha_(i)*s(i)*s(i) - Alpha_(i)*Omega_(i)*Mbar_(i);
+				}
+
+				if(Mbar_(i) < db)
+				{
+					Mbar_(i) = db;
+				}
+				
+				if(Mbar_(i) > Ramda_(i)/Alpha_(i))
+				{
+					Mbar_(i) = Ramda_(i)/Alpha_(i) - db;
+				}
+
+				Mbar_(i) = Mbar_(i) + dt_*Mbar_dot_(i);
 			}
 
 			// torque command
-			tau_cmd_.data = G_.data + Kp_.data.cwiseProduct(q_error.data) + Kd_.data.cwiseProduct(q_error_dot.data) + Ki_.data.cwiseProduct(q_error_integral_.data);
+			for(size_t i=0; i<n_joints_; i++)
+			{
+				ded(i) = qddot_cmd_(i) + 2.0 * Ramda_(i)*q_error(i) + Ramda_(i)*Ramda_(i)*q_error_dot(i);
+				tde(i) = tau_cmd_old_(i) - Mbar_(i)*qddot_(i);
+				tau_cmd_(i) = Mbar_(i)*ded(i) + tde(i);
+			}
 
-			for(int i=0; i<n_joints_; i++)
+			for(size_t i=0; i<n_joints_; i++)
 			{
 				joints_[i].setCommand(tau_cmd_(i));
 			}
 
-			for(int i=0; i<JointMax; i++)
+			tau_cmd_old_.data = tau_cmd_.data;
+			qdot_old_.data = qdot_.data;
+/*
+			for(size_t i=0; i<JointMax; i++)
 			{
-				JointData_[i][0] = count_;
+				JointData_[i][0] = time_;
 				JointData_[i][1] = q_cmd_(i)*R2D;
 				JointData_[i][2] = q_(i)*R2D;	
 				JointData_[i][3] = qdot_cmd_(i)*R2D;
@@ -325,7 +438,7 @@ namespace arm_controllers{
 			msg_Joint5_Data_.data.clear();
 			msg_Joint6_Data_.data.clear();
 
-			for(int i=0; i<SaveDataMax; i++)
+			for(size_t i=0; i<SaveDataMax; i++)
 			{
 				msg_Joint1_Data_.data.push_back(JointData_[0][i]);
 				msg_Joint2_Data_.data.push_back(JointData_[1][i]);
@@ -335,17 +448,183 @@ namespace arm_controllers{
 				msg_Joint6_Data_.data.push_back(JointData_[5][i]);
 			}						
 
-			count_++;
-
 			pub_Joint1_Data_.publish(msg_Joint1_Data_);
 			pub_Joint2_Data_.publish(msg_Joint2_Data_);
 			pub_Joint3_Data_.publish(msg_Joint3_Data_);
 			pub_Joint4_Data_.publish(msg_Joint4_Data_);
 			pub_Joint5_Data_.publish(msg_Joint5_Data_);
-			pub_Joint6_Data_.publish(msg_Joint6_Data_);						
+			pub_Joint6_Data_.publish(msg_Joint6_Data_);	
+*/
+			time_ = time_ + dt_;
+			total_time_ = total_time_ + dt_;				
   		}
 
   		void stopping(const ros::Time& time) { }
+
+		void task_via()
+		{
+			time_ = 0.0;
+
+			for (size_t i = 0; i < n_joints_; i++)
+			{
+				q_init_(i) = joints_[i].getPosition();
+				q_cmd_(i) = q_cmd_end_(i);
+				qdot_cmd_(i) = 0.0;
+				qddot_cmd_(i) = 0.0;
+			}
+		}
+
+		void task_init()
+		{
+			for (size_t i=0; i<n_joints_; i++)
+			{
+				q_cmd_(i) = 0.0;
+				qdot_cmd_(i) = 0.0;
+				qddot_cmd_(i) = 0.0;
+			}
+
+			q_cmd_end_.data = q_cmd_.data;
+		}
+
+		void task_ready()
+		{
+			for (size_t i=0; i<n_joints_; i++)
+			{
+				if (i == 2 || i == 4)
+				{
+					q_cmd_(i) = trajectory_generator_pos(q_init_(i), PI/2.0, 10.0);
+					qdot_cmd_(i) = trajectory_generator_vel(q_init_(i), PI/2.0, 10.0);
+					qddot_cmd_(i) = trajectory_generator_acc(q_init_(i), PI/2.0, 10.0);
+				}
+				else
+				{
+					q_cmd_(i) = q_init_(i);
+					qdot_cmd_(i) = 0.0;
+					qddot_cmd_(i) = 0.0;
+				}
+			}
+
+			q_cmd_end_.data = q_cmd_.data;
+		}
+
+		void task_freespace()
+		{
+			KDL::Frame start;
+			KDL::Twist target_vel;
+			KDL::JntArray cart_cmd;
+
+			cart_cmd.data = Eigen::VectorXd::Zero(3);
+
+			fk_solver_->JntToCart(q_init_, start);
+
+			for (size_t i=0; i<6; i++)
+			{
+				if(i == 2)
+				{
+					target_vel(i) = trajectory_generator_vel(start.p(i), 0.1, 10.0);
+				}
+				else
+				{
+					target_vel(i) = 0.0;
+				}
+			}
+
+			ik_vel_solver_->CartToJnt(q_cmd_, target_vel, qdot_cmd_);
+
+			for (size_t i=0; i<n_joints_; i++)
+			{
+				q_cmd_(i) = q_cmd_(i) + qdot_cmd_(i)*dt_;
+				qddot_cmd_(i) = (qdot_cmd_(i) - qdot_cmd_old_(i))/dt_;
+				qdot_cmd_old_(i) = qdot_cmd_(i);
+			}
+
+			q_cmd_end_.data = q_cmd_.data;			
+		}
+
+		void task_contactspace()
+		{
+			KDL::Frame start;
+			
+			fk_solver_->JntToCart(q_init_, start);
+
+			for (size_t i = 0; i < 6; i++)
+			{
+				if (i == 0)
+				{
+					Xc_dot_(i) = trajectory_generator_vel(start.p(i), 0.5, 20.0);
+				}
+				else if (i == 2)
+				{
+					Fe_ = f_cur_[1];
+					PI_ = PI_old_ + dt_ * (Fd_old_ - Fe_old_) / B_;
+					Xc_ddot_(i) = 1/M_*((Fe_ - Fd_) - (B_ + del_B_)*Xc_dot_old_(i));
+					Xc_dot_(i) = Xc_dot_old_(i) + Xc_ddot_(i)*dt_;
+					del_B_ = B_ / Xc_dot_(i) * PI_;
+					Xc_dot_old_(i) = Xc_dot_(i);
+					Fd_old_ = Fd_;
+					Fe_old_ = Fe_;
+					PI_old_ = PI_;
+				}
+				else
+				{
+					Xc_ddot_(i) = 0.0;
+					Xc_dot_(i) = 0.0;
+				}
+			}
+			
+			ik_vel_solver_->CartToJnt(q_cmd_, Xc_dot_, qdot_cmd_);
+
+			for (size_t i=0; i<n_joints_; i++)
+			{
+				q_cmd_(i) = q_cmd_(i) + qdot_cmd_(i)*dt_;
+				qddot_cmd_(i) = (qdot_cmd_(i) - qdot_cmd_old_(i))/dt_;
+				qdot_cmd_old_(i) = qdot_cmd_(i);
+			}
+
+			q_cmd_end_.data = q_cmd_.data;
+		}
+
+		void task_homming()
+		{
+			for (size_t i = 0; i < n_joints_; i++)
+			{
+				q_cmd_(i) = trajectory_generator_pos(q_init_(i), 0.0, 10.0);
+				qdot_cmd_(i) = trajectory_generator_vel(q_init_(i), 0.0, 10.0);
+				qddot_cmd_(i) = trajectory_generator_acc(q_init_(i), 0.0, 10.0);
+			}
+
+			q_cmd_end_.data = q_cmd_.data;
+		}
+
+		double trajectory_generator_pos(double dStart, double dEnd, double dDuration)
+		{
+			double dA0 = dStart;
+			double dA3 = (20.0*dEnd - 20.0*dStart) / (2.0*dDuration*dDuration*dDuration);
+			double dA4 = (30.0*dStart - 30*dEnd) / (2.0*dDuration*dDuration*dDuration*dDuration);
+			double dA5 = (12.0*dEnd - 12.0*dStart) / (2.0*dDuration*dDuration*dDuration*dDuration*dDuration);
+
+			return dA0 + dA3*time_*time_*time_ + dA4*time_*time_*time_*time_ + dA5*time_*time_*time_*time_*time_;
+		}
+
+		double trajectory_generator_vel(double dStart, double dEnd, double dDuration)
+		{
+			double dA0 = dStart;
+			double dA3 = (20.0*dEnd - 20.0*dStart) / (2.0*dDuration*dDuration*dDuration);
+			double dA4 = (30.0*dStart - 30*dEnd) / (2.0*dDuration*dDuration*dDuration*dDuration);
+			double dA5 = (12.0*dEnd - 12.0*dStart) / (2.0*dDuration*dDuration*dDuration*dDuration*dDuration);
+
+			return 3.0*dA3*time_*time_ + 4.0*dA4*time_*time_*time_ + 5.0*dA5*time_*time_*time_*time_;
+		}
+
+		double trajectory_generator_acc(double dStart, double dEnd, double dDuration)
+		{
+			double dA0 = dStart;
+			double dA3 = (20.0*dEnd - 20.0*dStart) / (2.0*dDuration*dDuration*dDuration);
+			double dA4 = (30.0*dStart - 30*dEnd) / (2.0*dDuration*dDuration*dDuration*dDuration);
+			double dA5 = (12.0*dEnd - 12.0*dStart) / (2.0*dDuration*dDuration*dDuration*dDuration*dDuration);
+
+			return 6.0*dA3*time_ + 12.0*dA4*time_*time_ + 20.0*dA5*time_*time_*time_;
+		}		
 
 	private:
 		// joint handles
@@ -357,31 +636,45 @@ namespace arm_controllers{
 		// kdl
 		KDL::Tree 	kdl_tree_;
 		KDL::Chain	kdl_chain_;
-		boost::scoped_ptr<KDL::ChainDynParam> id_solver_;	// inverse dynamics solver
-		KDL::JntArray G_;									// gravity torque vector
+		boost::scoped_ptr<KDL::ChainDynParam> id_solver_;	
+		boost::scoped_ptr<KDL::ChainFkSolverPos> fk_solver_;
+		boost::scoped_ptr<KDL::ChainIkSolverVel_pinv> ik_vel_solver_;
+		boost::scoped_ptr<KDL::ChainIkSolverPos_NR_JL> ik_pos_solver_;
+		KDL::JntArray G_; 
 		KDL::Vector gravity_;
 
-		// pid gain
-		KDL::JntArray Kp_, Ki_, Kd_;						// p,i,d gain
-		KDL::JntArray q_error_integral_;
-		double q_integral_min_;
-		double q_integral_max_;      /**< Internal PID controllers. */
+		// tdc gain
+		KDL::JntArray Mbar_, Mbar_dot_, Ramda_, Alpha_, Omega_;					
 
 		// cmd, state
-		KDL::JntArray tau_cmd_;
-		KDL::JntArray q_cmd_, qdot_cmd_, qddot_cmd_;
+		KDL::JntArray q_init_;
+		KDL::JntArray tau_cmd_, tau_cmd_old_;
+		KDL::JntArray q_cmd_, q_cmd_old_, qdot_cmd_, qdot_cmd_old_, qddot_cmd_;
+		KDL::JntArray q_cmd_end_;
 		KDL::JntArray q_cmd_sp_;
-		KDL::JntArray q_, qdot_;
+		KDL::JntArray q_, qdot_, qdot_old_, qddot_;
 		KDL::Wrench f_cur_;
 
-		// limit
-		KDL::JntArray q_limit_min_, q_limit_max_, qdot_limit_, qddot_limit_;
+		KDL::Twist Xc_dot_, Xc_dot_old_, Xc_ddot_;
+
+		double Xr_dot_, Xe_dot_;
+		double Xe_ddot_;
+
+		double Fd_, Fd_old_, Fe_, Fe_old_;
+		double M_, B_, del_B_;
+		double PI_, PI_old_;
+
+		double dt_;
+		double time_;
+		double total_time_;
+
+		double mag_;
+		double feq_;
 
 		// topic
 		ros::Subscriber sub_q_cmd_;
 		ros::Subscriber sub_forcetorque_sensor_;
-
-		double count_;
+/*
 		double JointData_[JointMax][SaveDataMax];
 
 		ros::Publisher pub_Joint1_Data_;
@@ -396,7 +689,8 @@ namespace arm_controllers{
 		std_msgs::Float64MultiArray msg_Joint3_Data_;
 		std_msgs::Float64MultiArray msg_Joint4_Data_;
 		std_msgs::Float64MultiArray msg_Joint5_Data_;
-		std_msgs::Float64MultiArray msg_Joint6_Data_;		
+		std_msgs::Float64MultiArray msg_Joint6_Data_;
+*/				
 	};
 
 }

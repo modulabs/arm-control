@@ -12,19 +12,25 @@ elfin:
         - elfin_joint4
         - elfin_joint5
         - elfin_joint6
-      root_link: world
-      #tip_link: elfin_link6
-      #tip_link: elfin_tool_ball
-      tip_link: elfin_ft_sensor_link  
+        - ft_sensor_joint
+
+      root_link: elfin_base_link
+      tip_link: elfin_tool_ball
+      
       joint1:
-        pid: {p: 100.0, i: 0, d: 10.0}
+        tdc: {mbar: 0.02, r: 10.0, a: 50.0, w: 0.004}
       joint2: 
-        pid: {p: 100.0, i: 0, d: 10.0}
+        tdc: {mbar: 0.02, r: 10.0, a: 50.0, w: 0.004}
       joint3: 
-        pid: {p: 100.0, i: 0, d: 10.0}
+        tdc: {mbar: 0.01, r: 10.0, a: 50.0, w: 0.004}
       joint4: 
-        pid: {p: 100.0, i: 0, d: 10.0}
+        tdc: {mbar: 0.004, r: 10.0, a: 50.0, w: 0.004}
       joint5: 
-        pid: {p: 100.0, i: 0, d: 10.0}
+        tdc: {mbar: 0.003, r: 10.0, a: 50.0, w: 0.004}
       joint6: 
-        pid: {p: 100.0, i: 0, d: 10.0}
+        tdc: {mbar: 0.001, r: 10.0, a: 50.0, w: 0.004}
+      joint7:
+        tdc: {mbar: 0.0, r: 0.0, a: 0.0, w: 0.0}
+
+      aic: {fd: 20.0, m: 20.0, b: 800.0}
+      # aic: {fd: 5.0, m: 5.0, b: 80.0}

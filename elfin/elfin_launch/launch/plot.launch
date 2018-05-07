@@ -1,0 +1,7 @@
+<launch>
+  <node name="elfin_rqt_state" pkg="rqt_gui" type="rqt_gui" respawn="false"
+	output="screen" args="--perspective-file $(find elfin_control)/launch/joint5_state.perspective"/>
+
+  <node name="elfin_rqt_error" pkg="rqt_gui" type="rqt_gui" respawn="false"
+	output="screen" args="--perspective-file $(find elfin_control)/launch/joint5_error.perspective"/>
+</launch>

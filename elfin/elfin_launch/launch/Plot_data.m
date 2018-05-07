@@ -1,6 +1,6 @@
 Sampling = 0.001;
 
-temp = load("Joint1.txt");
+temp = load("Joint2.txt");
 
 time = temp(:,3)*Sampling;
 desired_pos = temp(:,4);

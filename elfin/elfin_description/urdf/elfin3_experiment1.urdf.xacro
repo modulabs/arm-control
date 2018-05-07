@@ -447,10 +447,10 @@
     <origin xyz="0 -0.08 0" rpy="0 0 0" />
     <axis xyz="0 -1 0"/>
     <limit
-      lower="-3.14"
-      upper="3.14"
-      effort="500"
-      velocity="0" />   
+      lower="0.0"
+      upper="0.0"
+      effort="0.0"
+      velocity="0.0" />   
   </joint>
 
   <link name="elfin_tool">
@@ -490,7 +490,7 @@
       
       <surface>
         <friction>
-          <ode mu="0.4"/>
+          <ode mu="0.1"/>
         </friction>
       </surface>
     </collision>

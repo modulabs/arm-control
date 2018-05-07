@@ -16,7 +16,7 @@
 
   <gazebo>
     <plugin name="ft_sensor" filename="libgazebo_ros_ft_sensor.so">
-    <updateRate>1000</updateRate>
+    <updateRate>200</updateRate>
     <topicName>elfin/ft_sensor_topic</topicName>
     <jointName>ft_sensor_joint</jointName>
     </plugin>
