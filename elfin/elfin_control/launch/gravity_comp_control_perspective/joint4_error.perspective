@@ -125,7 +125,7 @@
                 }, 
                 "topics": {
                   "type": "repr", 
-                  "repr": "u'/elfin/gravity_comp_controller/state/error_dot[5]'"
+                  "repr": "u'/elfin/gravity_comp_controller/state/error_dot[3]'"
                 }, 
                 "y_limits": {
                   "type": "repr", 

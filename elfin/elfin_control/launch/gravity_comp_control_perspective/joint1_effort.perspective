@@ -78,7 +78,7 @@
                 }, 
                 "topics": {
                   "type": "repr", 
-                  "repr": "u'/elfin/gravity_comp_controller/state/effort_command[0]'"
+                  "repr": "[u'/elfin/gravity_comp_controller/state/effort_command[0]', u'/elfin/gravity_comp_controller/state/effort_gravity[0]']"
                 }, 
                 "y_limits": {
                   "type": "repr", 
@@ -86,7 +86,7 @@
                 }, 
                 "x_limits": {
                   "type": "repr", 
-                  "repr": "[222.079, 223.079]"
+                  "repr": "[72.465, 73.465]"
                 }
               }, 
               "groups": {}
@@ -125,7 +125,7 @@
                 }, 
                 "topics": {
                   "type": "repr", 
-                  "repr": "u''"
+                  "repr": "u'/elfin/gravity_comp_controller/state/effort_feedback[0]'"
                 }, 
                 "y_limits": {
                   "type": "repr", 
@@ -133,7 +133,7 @@
                 }, 
                 "x_limits": {
                   "type": "repr", 
-                  "repr": "[210.512, 211.512]"
+                  "repr": "[72.662, 73.662]"
                 }
               }, 
               "groups": {}

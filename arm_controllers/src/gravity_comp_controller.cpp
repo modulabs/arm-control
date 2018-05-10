@@ -119,7 +119,7 @@ namespace arm_controllers{
 			id_solver_.reset( new KDL::ChainDynParam(kdl_chain_, gravity_) );
 
 			// command and state
-			tau_cmd_.data = Eigen::VectorXd::Zero(n_joints_);
+			tau_cmd_ = Eigen::VectorXd::Zero(n_joints_);
 			q_cmd_.data = Eigen::VectorXd::Zero(n_joints_);
 			qdot_cmd_.data = Eigen::VectorXd::Zero(n_joints_);
 			qddot_cmd_.data = Eigen::VectorXd::Zero(n_joints_);
@@ -127,10 +127,17 @@ namespace arm_controllers{
 			q_.data = Eigen::VectorXd::Zero(n_joints_);
 			qdot_.data = Eigen::VectorXd::Zero(n_joints_);
 
-			q_error_.data = Eigen::VectorXd::Zero(n_joints_);
-			qdot_error_.data = Eigen::VectorXd::Zero(n_joints_);
+			q_error_ = Eigen::VectorXd::Zero(n_joints_);
+			qdot_error_ = Eigen::VectorXd::Zero(n_joints_);
+			// q_int_error_ = Eigen::VectorXd::Zero(n_joints_);
 
-			// pid gains
+			// gains
+			// kp_ = Eigen::VectorXd::Zero(n_joints_);
+			// ki_ = Eigen::VectorXd::Zero(n_joints_);
+			// i_clamp_min_ = Eigen::VectorXd::Zero(n_joints_);
+			// i_clamp_max_ = Eigen::VectorXd::Zero(n_joints_);
+			// kd_ = Eigen::VectorXd::Zero(n_joints_);
+
 			pid_controllers_.resize(n_joints_);
 			for (size_t i=0; i<n_joints_; i++)
 			{
@@ -208,9 +215,9 @@ namespace arm_controllers{
 			{
 				q_cmd_old = q_cmd_(i);
 				
-				if (i==3)
+				if (i==1)
 				{
-					q_cmd_(i) = 45*D2R*sin(PI*t);
+					q_cmd_(i) = 45*D2R*sin(PI/2*t);
 				}
 				// else if (i==4)
 				// {
@@ -220,16 +227,7 @@ namespace arm_controllers{
 					q_cmd_(i) = commands[i];
 
 				enforceJointLimits(q_cmd_(i), i);
-				// if (i==5)
-				// {
-				// 	ROS_INFO("q_cmd after enforceJointLimits = %f", q_cmd_(5)*R2D);
-				// }
 				qdot_cmd_(i) = ( q_cmd_(i) - q_cmd_old )/dt;
-
-				// if (i==5)
-				// {
-					// ROS_INFO("qdot_cmd = %f, %f, %f, %f", qdot_cmd_(5), q_cmd_(5), q_cmd_old,dt);
-				// }
 
 				q_(i) = joints_[i].getPosition();
 				qdot_(i) = joints_[i].getVelocity();
@@ -256,21 +254,34 @@ namespace arm_controllers{
 			}
 			t += dt;
 			
-			// static int td = 0;
-			// if (td==1000)
-			// {
-			// 	ROS_INFO("qdot_cmd = %f, q_cmd = %f, q_cmd_old = %f", qdot_cmd_(5)*R2D, q_cmd_(5)*R2D, q_cmd_old*R2D);
-			// 	td = 0;
-			// }
-			// td++;
-			// compute gravity torque
 			id_solver_->JntToGravity(q_, G_);
 
+			static int td = 0;
 			// torque command
 			for(int i=0; i<n_joints_; i++)
 			{
-				tau_cmd_(i) = G_(i) + pid_controllers_[i].computeCommand(q_error_(i), qdot_error_(i), period); // + kp_[i]*q_error(i) + ki_[i]*q_int_error(i) + kd_[i]*qdot_error(i);// 
+				// // i clamp
+				// q_int_error_(i) += q_error_(i);
+				// if (q_int_error_(i) >= i_clamp_max_(i))
+				// 	q_int_error_(i) = i_clamp_max_(i);
+				// else if (q_int_error_(i) <= i_clamp_min_(i))
+				// 	q_int_error_(i) = i_clamp_min_(i);
 
+				// 
+				tau_cmd_(i) = G_(i) + pid_controllers_[i].computeCommand(q_error_(i), period); // kp_(i)*q_error_(i) + ki_(i)*q_int_error_(i) + kd_(i)*qdot_error_(i);
+
+				
+				if (i==1)
+				{
+					if (td==1000)
+					{
+						ROS_INFO("tau_cmd(1) = %.4f, q_error = %.4f, qdot_error = %.4f, %.4f, %.4f, G = %.4f", tau_cmd_(i), q_error_(i), qdot_error_(i), qdot_cmd_(i), qdot_(i), G_(i));
+						td =0;
+					}
+				}
+				
+				
+				// effort saturation
 				if (tau_cmd_(i) >= joint_urdfs_[i]->limits->effort)
 					tau_cmd_(i) = joint_urdfs_[i]->limits->effort;
 				
@@ -279,6 +290,7 @@ namespace arm_controllers{
 
 				joints_[i].setCommand( tau_cmd_(i) );
 			}
+			td++;
 
 			// publish
 			if (loop_count_ % 10 == 0)
@@ -338,17 +350,20 @@ namespace arm_controllers{
 		KDL::Vector gravity_;
 
 		// pid gain
-  		std::vector<control_toolbox::Pid> pid_controllers_;       /**< Internal PID controllers. */
+  		std::vector<control_toolbox::Pid> pid_controllers_; /**< Internal PID controllers. */
 
 		// cmd, state
-		// boost::scoped_ptr<
-		// 	realtime_tools::RealtimePublisher<
-		// 	control_msgs::JointControllerState> > controller_state_publisher_ ;
 		realtime_tools::RealtimeBuffer<std::vector<double> > commands_buffer_;
-		KDL::JntArray tau_cmd_;
 		KDL::JntArray q_cmd_, qdot_cmd_, qddot_cmd_;
 		KDL::JntArray q_, qdot_;
-		KDL::JntArray q_error_, qdot_error_;
+
+		Eigen::VectorXd tau_cmd_;
+		Eigen::VectorXd q_error_, qdot_error_; //, q_int_error_;
+
+		// gain
+		// Eigen::VectorXd kp_, ki_, kd_;
+		// Eigen::VectorXd i_clamp_max_, i_clamp_min_;
+		// std::vector<bool> antiwindup_;
 
 		// topic
 		ros::Subscriber command_sub_;
