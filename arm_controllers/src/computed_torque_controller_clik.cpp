@@ -739,7 +739,7 @@ class Computed_Torque_Controller_CLIK : public controller_interface::Controller<
             printf("y_dot: %f\n", xdot_(5));
             printf("\n");
 
-            printf("*** Desired Rotation Matrix of end-effector w.r.t end-effector frame ? ***\n");
+            printf("*** Desired Rotation Matrix of end-effector ***\n");
             printf("%f, ",xd_.M(0,0));
             printf("%f, ",xd_.M(0,1));
             printf("%f\n",xd_.M(0,2));
@@ -751,7 +751,7 @@ class Computed_Torque_Controller_CLIK : public controller_interface::Controller<
             printf("%f\n",xd_.M(2,2));
             printf("\n");
 
-            printf("*** Actual Rotation Matrix of end-effector w.r.t end-effector frame ? ***\n");
+            printf("*** Actual Rotation Matrix of end-effector ***\n");
             printf("%f, ",x_.M(0,0));
             printf("%f, ",x_.M(0,1));
             printf("%f\n",x_.M(0,2));
