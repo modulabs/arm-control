@@ -8,7 +8,13 @@ find_package(catkin REQUIRED COMPONENTS
   urdf
   kdl_parser
   realtime_tools
+  dynamic_reconfigure
 )
+
+# Dynamics reconfigure
+generate_dynamic_reconfigure_options(
+  cfg/GravityCompControllerParams.cfg
+  )
 
 # message
 add_message_files(FILES ControllerJointState.msg)
@@ -25,6 +31,7 @@ catkin_package(
     urdf
     kdl_parser
     realtime_tools
+    dynamic_reconfigure
   LIBRARIES ${PROJECT_NAME}
 )
 
@@ -34,6 +41,8 @@ add_library(${PROJECT_NAME}
 )
 
 target_link_libraries(${PROJECT_NAME} ${catkin_LIBRARIES})
+
+add_dependencies(${PROJECT_NAME} ${PROJECT_NAME}_gencfg)
 
 install(DIRECTORY include/${PROJECT_NAME}/
   DESTINATION ${CATKIN_PACKAGE_INCLUDE_DESTINATION})

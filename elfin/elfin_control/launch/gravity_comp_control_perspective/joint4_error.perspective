@@ -78,7 +78,7 @@
                 }, 
                 "topics": {
                   "type": "repr", 
-                  "repr": "u'/elfin/gravity_comp_controller/state/error[5]'"
+                  "repr": "u'/elfin/gravity_comp_controller/state/error[3]'"
                 }, 
                 "y_limits": {
                   "type": "repr", 
@@ -86,7 +86,7 @@
                 }, 
                 "x_limits": {
                   "type": "repr", 
-                  "repr": "[120.197, 121.197]"
+                  "repr": "[101.31299999999999, 102.31299999999999]"
                 }
               }, 
               "groups": {}
@@ -133,7 +133,7 @@
                 }, 
                 "x_limits": {
                   "type": "repr", 
-                  "repr": "[120.15, 121.15]"
+                  "repr": "[101.56199999999998, 102.56199999999998]"
                 }
               }, 
               "groups": {}
