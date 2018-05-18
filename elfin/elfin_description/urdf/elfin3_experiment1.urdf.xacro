@@ -1,16 +1,16 @@
 <robot
   name="elfin3" xmlns:xacro="http://www.ros.org/wiki/xacro">
-  
+
   <xacro:include filename="$(find elfin_description)/urdf/materials.xacro" />
-  
-  <xacro:include filename="$(find elfin_description)/urdf/elfin_robot.gazebo" />
-  
-  <xacro:include filename="$(find elfin_description)/urdf/elfin_transmission.xacro" />
-  
+
+  <xacro:include filename="$(find elfin_description)/urdf/elfin_robot_experiment1.gazebo" />
+
+  <xacro:include filename="$(find elfin_description)/urdf/elfin_transmission_experiment1.xacro" />
+
   <xacro:property name="PI" value="3.1415926535897931"/>
-  
+
   <link name="world"/>
-  
+
   <joint name="world_base" type="fixed">
     <origin
       xyz="0 0 0"
@@ -20,9 +20,9 @@
     <child
       link="elfin_base_link" />
   </joint>
-  
+
   <link name="elfin_base_link"/>
-  
+
   <joint name="elfin_base_joint" type="fixed">
     <origin
       xyz="0 0 0"
@@ -32,7 +32,7 @@
     <child
       link="elfin_base" />
   </joint>
-  
+
   <link
     name="elfin_base">
     <inertial>
@@ -418,29 +418,95 @@
       effort="120"
       velocity="1.57" />
   </joint>
-  
-  <link name="elfin_end_link"/>
-  
-  <joint name="elfin_end_joint" type="fixed">
-    <origin
-      xyz="0 -0.091 0"
-      rpy="${PI/2} ${-PI/2} 0" />
-    <parent
-      link="elfin_link6" />
-    <child
-      link="elfin_end_link" />
+
+  <link name="elfin_ft_sensor_link">
+    <collision>
+      <origin xyz="0 0 0" rpy="${PI/2} 0 0"/>
+      <geometry>
+        <cylinder length="0.02" radius="0.04"/>
+      </geometry>
+    </collision>
+
+    <visual>
+      <origin xyz="0 0 0" rpy="${PI/2} 0 0" />
+      <geometry>
+        <cylinder length="0.02" radius="0.04"/>
+      </geometry>
+    </visual>
+
+    <inertial>
+      <mass value="0.01" />
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <inertia ixx="0.01" ixy="0" ixz="0" iyy="0.01" iyz="0" izz="0.01" />
+    </inertial>
+  </link>
+
+  <joint name="ft_sensor_joint" type="revolute">
+    <parent link="elfin_link6"/>
+    <child link="elfin_ft_sensor_link"/>
+    <origin xyz="0 -0.08 0" rpy="0 0 0" />
+    <axis xyz="0 -1 0"/>
+    <limit
+      lower="0.0"
+      upper="0.0"
+      effort="0.0"
+      velocity="0.0" />   
   </joint>
-  
-  <link name="elfin_dummy_gripper"/>
-  
-  <joint name="elfin_dummy_joint" type="fixed">
-    <origin
-      xyz="0 -0.111 0"
-      rpy="${PI/2} ${-PI/2} 0" />
-    <parent
-      link="elfin_link6" />
-    <child
-      link="elfin_dummy_gripper" />
+
+  <link name="elfin_tool">
+    <collision>
+      <origin xyz="0 0 0" rpy="${PI/2} 0 0"/>
+      <geometry>
+        <cylinder length="0.08" radius="0.01"/>
+      </geometry>
+    </collision>
+
+    <visual>
+      <origin xyz="0 0 0" rpy="${PI/2} 0 0" />
+      <geometry>
+        <cylinder length="0.08" radius="0.01"/>
+      </geometry>
+    </visual>
+
+    <inertial>
+      <mass value="0.01" />
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <inertia ixx="0.01" ixy="0" ixz="0" iyy="0.01" iyz="0" izz="0.01" />
+    </inertial>
+  </link>
+
+  <joint name="tool_joint" type="fixed">
+    <parent link="elfin_ft_sensor_link"/>
+    <child link="elfin_tool"/>
+    <origin xyz="0 -0.05 0" rpy="0 0 0" />
   </joint>
-  
-</robot>
+
+  <link name="elfin_tool_ball">
+    <collision>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <geometry>
+        <sphere radius="0.02"/>
+      </geometry>
+    </collision>
+
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <sphere radius="0.02"/>
+      </geometry>
+    </visual>
+
+    <inertial>
+      <mass value="0.01" />
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <inertia ixx="0.01" ixy="0" ixz="0" iyy="0.01" iyz="0" izz="0.01" />
+    </inertial>
+  </link>
+
+  <joint name="tool_ball_joint" type="fixed">
+    <parent link="elfin_tool"/>
+    <child link="elfin_tool_ball"/>
+    <origin xyz="0 -0.04 0" rpy="0 0 0" />
+  </joint>  
+
+</robot> 

@@ -3,9 +3,9 @@
   
   <xacro:include filename="$(find elfin_description)/urdf/materials.xacro" />
   
-  <xacro:include filename="$(find elfin_description)/urdf/elfin_robot.gazebo" />
+  <xacro:include filename="$(find elfin_description)/urdf/elfin_robot_no_fric_no_joint_limit.gazebo" />
   
-  <xacro:include filename="$(find elfin_description)/urdf/elfin_transmission.xacro" />
+  <xacro:include filename="$(find elfin_description)/urdf/elfin_transmission_no_fric_no_joint_limit.xacro" />
   
   <xacro:property name="PI" value="3.1415926535897931"/>
   
@@ -109,10 +109,10 @@
   </link>
   <joint
     name="elfin_joint1"
-    type="revolute">
+    type="continuous">
     <origin
       xyz="0 0 0.031"
-      rpy="${PI/2} 0 0" />
+      rpy="${PI/2} 0 ${PI/2}" />
     <parent
       link="elfin_base" />
     <child
@@ -120,13 +120,8 @@
     <axis
       xyz="0 1 0" />
     <dynamics
-      damping="1"
-      friction="1" />
-    <limit
-      lower="-3.14"
-      upper="3.14"
-      effort="120"
-      velocity="1.57" />
+      damping="0"
+      friction="0" />
   </joint>
   <link
     name="elfin_link2">
@@ -167,7 +162,7 @@
   </link>
   <joint
     name="elfin_joint2"
-    type="revolute">
+    type="continuous">
     <origin
       xyz="-0.068808 0.1615 0"
       rpy="0 0 0" />
@@ -178,13 +173,8 @@
     <axis
       xyz="-1 0 0" />
     <dynamics
-      damping="1"
-      friction="1" />
-    <limit
-      lower="-2.35"
-      upper="2.35"
-      effort="120"
-      velocity="1.57" />
+      damping="0"
+      friction="0" />
   </joint>
   <link
     name="elfin_link3">
@@ -225,7 +215,7 @@
   </link>
   <joint
     name="elfin_joint3"
-    type="revolute">
+    type="continuous">
     <origin
       xyz="0 0.266 0"
       rpy="${-PI} 0 0" />
@@ -236,13 +226,8 @@
     <axis
       xyz="1 0 0" />
     <dynamics
-      damping="1"
-      friction="1" />
-    <limit
-      lower="-2.61"
-      upper="2.61"
-      effort="120"
-      velocity="1.57" />
+      damping="0"
+      friction="0" />
   </joint>
   <link
     name="elfin_link4">
@@ -283,10 +268,10 @@
   </link>
   <joint
     name="elfin_joint4"
-    type="revolute">
+    type="continuous">
     <origin
       xyz="0.068808 -0.10523 0"
-      rpy="${PI} 0 0" />
+      rpy="${PI/2} 0 0" />
     <parent
       link="elfin_link3" />
     <child
@@ -294,13 +279,8 @@
     <axis
       xyz="0 1 0" />
     <dynamics
-      damping="1"
-      friction="1" />
-    <limit
-      lower="-3.14"
-      upper="3.14"
-      effort="120"
-      velocity="1.57" />
+      damping="0"
+      friction="0" />
   </joint>
   <link
     name="elfin_link5">
@@ -341,7 +321,7 @@
   </link>
   <joint
     name="elfin_joint5"
-    type="revolute">
+    type="continuous">
     <origin
       xyz="0 0.21877 0"
       rpy="${-PI} 0 0" />
@@ -352,13 +332,8 @@
     <axis
       xyz="1 0 0" />
     <dynamics
-      damping="1"
-      friction="1" />
-    <limit
-      lower="-2.56"
-      upper="2.56"
-      effort="120"
-      velocity="1.57" />
+      damping="0"
+      friction="0" />
   </joint>
   <link
     name="elfin_link6">
@@ -399,7 +374,7 @@
   </link>
   <joint
     name="elfin_joint6"
-    type="revolute">
+    type="continuous">
     <origin
       xyz="0 -0.1065 0"
       rpy="${-PI} 0 ${-PI}" />
@@ -410,13 +385,8 @@
     <axis
       xyz="0 -1 0" />
     <dynamics
-      damping="1"
-      friction="1" />
-    <limit
-      lower="-3.14"
-      upper="3.14"
-      effort="120"
-      velocity="1.57" />
+      damping="0"
+      friction="0" />
   </joint>
   
   <link name="elfin_end_link"/>
