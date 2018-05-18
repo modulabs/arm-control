@@ -34,7 +34,7 @@
 #define A 0.1
 #define b 2.5
 #define f 1
-#define t_set 5
+#define t_set 1
 
 namespace arm_controllers
 {
@@ -328,8 +328,8 @@ class Computed_Torque_Controller_CLIK : public controller_interface::Controller<
             // (1) Set Point Regulation
             if (event == 0) // initial command
             {
-                xd_.p(0) = -0.3;
-                xd_.p(1) = 0.0;
+                xd_.p(0) = 0.0;
+                xd_.p(1) = -0.32;
                 xd_.p(2) = 0.56;
                 xd_.M = KDL::Rotation(KDL::Rotation::RPY(0, 0, 0));
             }

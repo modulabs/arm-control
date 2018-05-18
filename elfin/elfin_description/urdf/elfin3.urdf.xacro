@@ -112,7 +112,7 @@
     type="revolute">
     <origin
       xyz="0 0 0.031"
-      rpy="${PI/2} 0 0" />
+      rpy="${PI/2} 0 ${PI/2}" />
     <parent
       link="elfin_base" />
     <child
