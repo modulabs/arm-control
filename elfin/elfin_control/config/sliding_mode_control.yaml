@@ -1,0 +1,39 @@
+elfin:
+    joint_state_controller:
+      type: joint_state_controller/JointStateController
+      publish_rate: 1000
+    
+    sliding_mode_controller:
+      type: arm_controllers/SlidingModeController
+      joints:
+        - elfin_joint1
+        - elfin_joint2
+        - elfin_joint3
+        - elfin_joint4
+        - elfin_joint5
+        - elfin_joint6
+
+      root_link: elfin_base_link
+      tip_link: elfin_dummy_gripper
+
+      joint1:
+        # smc: {slope: 0.0, kd: 0.0, k: 0.0} 
+        # smc: {slope: 40.0, kd: 10.0, k: 5.0}
+        smc: {slope: 80.0, kd: 30.0, k: 5.0}
+      joint2: 
+        # smc: {slope: 0.0, kd: 0.0, k: 0.0}
+        smc: {slope: 80.0, kd: 30.0, k: 5.0}
+      joint3:
+        # smc: {slope: 0.0, kd: 0.0, k: 0.0} 
+        smc: {slope: 80.0, kd: 30.0, k: 5.0}
+      joint4:
+        # smc: {slope: 0.0, kd: 0.0, k: 0.0} 
+        # smc: {slope: 20.0, kd: 15.0, k: 2.0}
+        smc: {slope: 20.0, kd: 5.0, k: 0.1}
+      joint5:
+        # smc: {slope: 0.0, kd: 0.0, k: 0.0} 
+        smc: {slope: 80.0, kd: 30.0, k: 2.0}
+      joint6:
+        smc: {slope: 0.0, kd: 0.0, k: 0.0} 
+        # smc: {slope: 80.0, kd: 15.0, k: 5.0}
+        # smc: {slope: 80.0, kd: 1.5, k: 0.15}
