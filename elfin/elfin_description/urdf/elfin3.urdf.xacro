@@ -410,8 +410,8 @@
     <axis
       xyz="0 -1 0" />
     <dynamics
-      damping="1"
-      friction="1" />
+      damping="0"
+      friction="100000" />
     <limit
       lower="-3.14"
       upper="3.14"

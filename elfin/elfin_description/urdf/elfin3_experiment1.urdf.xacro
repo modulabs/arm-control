@@ -5,7 +5,7 @@
 
   <xacro:include filename="$(find elfin_description)/urdf/elfin_robot_experiment1.gazebo" />
 
-  <xacro:include filename="$(find elfin_description)/urdf/elfin_transmission.xacro" />
+  <xacro:include filename="$(find elfin_description)/urdf/elfin_transmission_experiment1.xacro" />
 
   <xacro:property name="PI" value="3.1415926535897931"/>
 

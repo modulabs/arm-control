@@ -27,7 +27,7 @@ catkin_package(
 
 add_library(${PROJECT_NAME}
   src/time_delay_controller.cpp
-  src/gravity_comp_controller.cpp
+  src/sliding_mode_controller.cpp
   src/adaptive_variable_impedance_controller.cpp
 )
 

@@ -15,7 +15,7 @@ elfin:
         - ft_sensor_joint
 
       root_link: elfin_base_link
-      tip_link: elfin_tool_ball
+      tip_link: elfin_dummy_gripper
       
       joint1:
         tdc: {mbar: 0.02, r: 10.0, a: 50.0, w: 0.004}
