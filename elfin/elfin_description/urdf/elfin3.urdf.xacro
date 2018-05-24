@@ -121,7 +121,7 @@
       xyz="0 1 0" />
     <dynamics
       damping="0"
-      friction="1000" />
+      friction="0" />
     <limit
       lower="-3.14"
       upper="3.14"
@@ -179,7 +179,7 @@
       xyz="-1 0 0" />
     <dynamics
       damping="0"
-      friction="1000" />
+      friction="0" />
     <limit
       lower="-2.35"
       upper="2.35"
