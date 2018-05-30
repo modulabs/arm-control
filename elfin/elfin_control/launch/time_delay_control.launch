@@ -7,9 +7,9 @@
   <node name="robot_state_publisher" pkg="robot_state_publisher" type="state_publisher" ns="/elfin"/>
 
   <node name="elfin_rqt_state" pkg="rqt_gui" type="rqt_gui" respawn="false"
-	output="screen" args="--perspective-file $(find elfin_controller)/launch/joint2_state.perspective"/>
+	output="screen" args="--perspective-file $(find elfin_control)/launch/time_delay_control_perspective/joint2_state.perspective"/>
 
   <node name="elfin_rqt_error" pkg="rqt_gui" type="rqt_gui" respawn="false"
-	output="screen" args="--perspective-file $(find elfin_controller)/launch/joint2_error.perspective"/>
+	output="screen" args="--perspective-file $(find elfin_control)/launch/time_delay_control_perspective/joint2_error.perspective"/>
 
 </launch>

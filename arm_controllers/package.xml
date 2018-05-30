@@ -16,13 +16,15 @@
   <build_depend>kdl_parser</build_depend>
   <build_depend>realtime_tools</build_depend>
   <build_depend>angles</build_depend>
-
+  <build_depend>dynamic_reconfigure</build_depend>
+  
   <run_depend>controller_interface</run_depend>
   <run_depend>urdf</run_depend>
   <run_depend>control_msgs</run_depend>
   <run_depend>kdl_parser</run_depend>
   <run_depend>realtime_tools</run_depend>
   <run_depend>angles</run_depend>
+  <run_depend>dynamic_reconfigure</run_depend>
 
    <export>
     <controller_interface plugin="${prefix}/controller_plugins.xml" />

@@ -5,10 +5,10 @@ elfin:
         
     time_delay_controller:
       type: arm_controllers/TimeDelayController
-      joint_names: 
-          - elfin_joint1
-          - elfin_joint2
-          - elfin_joint3
-          - elfin_joint4
-          - elfin_joint5
-          - elfin_joint6
+      joints: 
+        - elfin_joint1
+        - elfin_joint2
+        - elfin_joint3
+        - elfin_joint4
+        - elfin_joint5
+        - elfin_joint6

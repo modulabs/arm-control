@@ -120,8 +120,8 @@
     <axis
       xyz="0 1 0" />
     <dynamics
-      damping="1"
-      friction="1" />
+      damping="0"
+      friction="0" />
     <limit
       lower="-3.14"
       upper="3.14"
@@ -178,8 +178,8 @@
     <axis
       xyz="-1 0 0" />
     <dynamics
-      damping="1"
-      friction="1" />
+      damping="0"
+      friction="0" />
     <limit
       lower="-2.35"
       upper="2.35"
@@ -236,8 +236,8 @@
     <axis
       xyz="1 0 0" />
     <dynamics
-      damping="1"
-      friction="1" />
+      damping="0"
+      friction="0" />
     <limit
       lower="-2.61"
       upper="2.61"
@@ -294,8 +294,8 @@
     <axis
       xyz="0 1 0" />
     <dynamics
-      damping="1"
-      friction="1" />
+      damping="0"
+      friction="0" />
     <limit
       lower="-3.14"
       upper="3.14"
@@ -352,8 +352,8 @@
     <axis
       xyz="1 0 0" />
     <dynamics
-      damping="1"
-      friction="1" />
+      damping="0"
+      friction="0" />
     <limit
       lower="-2.56"
       upper="2.56"
@@ -410,8 +410,8 @@
     <axis
       xyz="0 -1 0" />
     <dynamics
-      damping="1"
-      friction="1" />
+      damping="0"
+      friction="0" />
     <limit
       lower="-3.14"
       upper="3.14"
