@@ -1,8 +1,8 @@
 <launch>
   <node name="elfin_rqt_state" pkg="rqt_gui" type="rqt_gui" respawn="false"
-	output="screen" args="--perspective-file $(find elfin_launch)/launch/joint6_state.perspective"/>
+	output="screen" args="--perspective-file $(find elfin_launch)/launch/joint4_state.perspective"/>
 
   <node name="elfin_rqt_error" pkg="rqt_gui" type="rqt_gui" respawn="false"
-	output="screen" args="--perspective-file $(find elfin_launch)/launch/joint6_error.perspective"/>
+	output="screen" args="--perspective-file $(find elfin_launch)/launch/joint4_error.perspective"/>
 </launch>
 
