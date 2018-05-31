@@ -264,7 +264,6 @@ namespace arm_controllers{
 				
 				gains_[i]->initDynamicReconfig(ros::NodeHandle(n, "gains/"+joint_names_[i]));
 			}
-			
 
 			// command subscriber
 			commands_buffer_.writeFromNonRT(std::vector<double>(n_joints_, 0.0));
@@ -320,13 +319,12 @@ namespace arm_controllers{
 			double dt = period.toSec();
 			double q_cmd_old;
 
-			static double t = 0;
 			// get joint states
-			static double t = 0;
+			// static double t = 0;
 			for (size_t i=0; i<n_joints_; i++)
 			{
 <<<<<<< HEAD
-				q_cmd_(i) = M_PI/6*sin(t/10);//commands[i];
+				//q_cmd_(i) = M_PI/6*sin(t/10);//commands[i];
 =======
 				q_cmd_old = q_cmd_(i);
 				
@@ -368,7 +366,7 @@ namespace arm_controllers{
 				}
 				q_error_dot_(i) = qdot_cmd_(i) - qdot_(i);
 			}
-			t += dt;
+			// t += dt;
 			
 <<<<<<< HEAD
 			// double dt = period.toSec();
@@ -385,7 +383,6 @@ namespace arm_controllers{
 >>>>>>> 721baaa226f9465ba69721d7facf867717fda12a
 			id_solver_->JntToGravity(q_, G_);
 
-			static int td = 0;
 			// torque command
 			for(int i=0; i<n_joints_; i++)
 			{
@@ -408,7 +405,6 @@ namespace arm_controllers{
 
 				joints_[i].setCommand( tau_cmd_(i) );
 			}
-			td++;
 
 			// publish
 			if (loop_count_ % 10 == 0)

@@ -19,12 +19,118 @@
 
 namespace arm_controllers{
 
+
+
 	class PassivityController: public controller_interface::Controller<hardware_interface::EffortJointInterface>
 	{
+		class Gains
+		{
 		public:
-		~PassivityController() {sub_command_.shutdown();}
+			Gains()
+				: alpha_(0.0), p_(0.0), d_(0.0)
+			{}
+
+			void setGains(double alpha, double p, double d)
+			{
+				alpha_ = alpha; p_ = p; d_ = d;
+			}
+
+			void setGains()
+			{
+				
+			}
+
+			void getGains(double& alpha, double& p, double& d)
+			{
+				alpha = alpha_; p = p_; d = d_;
+			}
+
+			void initDynamicReconfig(const ros::NodeHandle &node)
+			{
+				ROS_INFO("Init dynamic reconfig in namespace %s", node.getNamespace().c_str());
+
+				// Start dynamic reconfigure server
+				param_reconfig_server_.reset(new DynamicReconfigServer(param_reconfig_mutex_, node));
+				dynamic_reconfig_initialized_ = true;
+
+				// Set Dynamic Reconfigure's gains to Pid's values
+				updateDynamicReconfig();
+
+				// Set callback
+				param_reconfig_callback_ = boost::bind(&Gains::dynamicReconfigCallback, this, _1, _2);
+				param_reconfig_server_->setCallback(param_reconfig_callback_);
+			}
+
+			void updateDynamicReconfig()
+			{
+				// Make sure dynamic reconfigure is initialized
+				if(!dynamic_reconfig_initialized_)
+					return;
+
+				// Get starting values
+				arm_controllers::GravityCompControllerParamsConfig config;
+
+				// Get starting values
+				getGains(config.alpha, config.p, config.d);
+
+				updateDynamicReconfig(config);
+			}
+
+			void updateDynamicReconfig(GravityCompControllerParamsConfig config)
+			{
+				// Make sure dynamic reconfigure is initialized
+				if(!dynamic_reconfig_initialized_)
+					return;
+
+				// Set starting values, using a shared mutex with dynamic reconfig
+				param_reconfig_mutex_.lock();
+				param_reconfig_server_->updateConfig(config);
+				param_reconfig_mutex_.unlock();
+			}
+
+			void dynamicReconfigCallback(arm_controllers::GravityCompControllerParamsConfig &config, uint32_t /*level*/)
+			{
+				ROS_DEBUG_STREAM_NAMED("passivity gain","Dynamics reconfigure callback recieved.");
+
+				// Set the gains
+				setGains(config.alpha, config.p, config.d);
+			}
+
+			double alpha_;
+			double p_;
+			double d_;
+
+		private:
+			// Store the gains in a realtime buffer to allow dynamic reconfigure to update it without
+			// blocking the realtime update loop
+			// realtime_tools::RealtimeBuffer<Gains> gains_buffer_;	// to do: consider real-time thread
+
+			// Dynamics reconfigure
+			bool dynamic_reconfig_initialized_;
+			typedef dynamic_reconfigure::Server<arm_controllers::GravityCompControllerParamsConfig> DynamicReconfigServer;
+			boost::shared_ptr<DynamicReconfigServer> param_reconfig_server_;
+			DynamicReconfigServer::CallbackType param_reconfig_callback_;
+
+			boost::recursive_mutex param_reconfig_mutex_;
+		};
+
+		public:
+		~PassivityController() 
+		{
+			command_sub_.shutdown();
+			for (int i=0; i<n_joints_; i++)
+			{
+				if (gains_[i] != NULL)
+				{
+					delete gains_[i];
+					gains_[i] = NULL;
+				}
+			}
+		}
+
 		bool init(hardware_interface::EffortJointInterface* hw, ros::NodeHandle &n)
   		{	
+			loop_count_ = 0;
 			// List of controlled joints
     		if (!n.getParam("joints", joint_names_))
 			{
@@ -115,45 +221,68 @@ namespace arm_controllers{
 
 			// command and state
 			tau_cmd_.data = Eigen::VectorXd::Zero(n_joints_);
-			qdot_ref_.data = Eigen::VectorXd::Zero(n_joints_);
-			qddot_ref_.data = Eigen::VectorXd::Zero(n_joints_);
 			q_cmd_.data = Eigen::VectorXd::Zero(n_joints_);
 			qdot_cmd_.data = Eigen::VectorXd::Zero(n_joints_);
 			qddot_cmd_.data = Eigen::VectorXd::Zero(n_joints_);
 			q_cmd_old_.data = Eigen::VectorXd::Zero(n_joints_);
 			qdot_cmd_old_.data = Eigen::VectorXd::Zero(n_joints_);
+			qdot_ref_.data = Eigen::VectorXd::Zero(n_joints_);
+			qddot_ref_.data = Eigen::VectorXd::Zero(n_joints_);
 			
 			q_.data = Eigen::VectorXd::Zero(n_joints_);
 			qdot_.data = Eigen::VectorXd::Zero(n_joints_);
 
 			q_error_.data = Eigen::VectorXd::Zero(n_joints_);
-			qdot_error_.data = Eigen::VectorXd::Zero(n_joints_);
+			q_error_dot_.data = Eigen::VectorXd::Zero(n_joints_);
 
 			// gains
-			alpha_.resize(n_joints_);
-			pid_controllers_.resize(n_joints_);
 			for (size_t i=0; i<n_joints_; i++)
 			{
-				if (!n.getParam("gains/" + joint_names_[i] + "/alpha", alpha_[i]))
+				gains_.push_back(new Gains());
+				if (!n.getParam("gains/" + joint_names_[i] + "/alpha", gains_[i]->alpha_))
 				{
-					ROS_ERROR("Could not find root link name");
+					ROS_ERROR("Could not find alpha gain in %s", ("gains/"+joint_names_[i]+"/alpha").c_str());
 					return false;
 				}
 
-				// Load PID Controller using gains set on parameter server
-				if (!pid_controllers_[i].init(ros::NodeHandle(n, "gains/" + joint_names_[i] + "/pid")))
+				if (!n.getParam("gains/" + joint_names_[i] + "/pid/p", gains_[i]->i_))
 				{
-					ROS_ERROR_STREAM("Failed to load PID parameters from " << joint_names_[i] + "/pid");
+					ROS_ERROR("Could not find p gain in %s", ("gains/"+joint_names_[i]+"/pid/pi").c_str());
 					return false;
 				}
+
+				if (!n.getParam("gains/" + joint_names_[i] + "/pid/d", gains_[i]->d_))
+				{
+					ROS_ERROR("Could not find d gain in %s", ("gains/"+joint_names_[i]+"/pid/d").c_str());
+					return false;
+				}
+
+				
+				gains_[i]->initDynamicReconfig(ros::NodeHandle(n, "gains/"+joint_names_[i]));
 			}
 
-			// command
+			// command subscriber
 			commands_buffer_.writeFromNonRT(std::vector<double>(n_joints_, 0.0));
-			sub_command_ = n.subscribe("command", 1, &PassivityController::commandCB, this);
+			command_sub_ = n.subscribe<std_msgs:Float64MultiArray>("command", 1, &PassivityController::commandCB, this);
 
-			// ser
-			//ros::ServiceServer srv_load_gain_ = n.advertiseService("load_gain", &PassivityController::loadGainCB, this);
+			// start realtime state publisher
+			controller_state_pub_.reset(
+				new realtime_tools::RealtimePublisher<arm_controllers::ControllerJointState>(n, "state", 1));
+
+			controller_state_pub_->msg_.header.stamp = ros::Time::now();
+			for (size_t i=0; i<n_joints_; i++)
+			{
+				controller_state_pub_->msg_.name.push_back(joint_names_[i]);
+				controller_state_pub_->msg_.command.push_back(0.0);
+				controller_state_pub_->msg_.command_dot.push_back(0.0);
+				controller_state_pub_->msg_.state.push_back(0.0);
+				controller_state_pub_->msg_.state_dot.push_back(0.0);
+				controller_state_pub_->msg_.error.push_back(0.0);
+				controller_state_pub_->msg_.error_dot.push_back(0.0);
+				controller_state_pub_->msg_.effort_command.push_back(0.0);
+				controller_state_pub_->msg_.effort_feedforward.push_back(0.0);
+				controller_state_pub_->msg_.effort_feedback.push_back(0.0);
+			}
 
    			return true;
   		}
@@ -180,21 +309,19 @@ namespace arm_controllers{
 			commands_buffer_.writeFromNonRT(msg->data);
 		}
 
-		// load gain is not permitted during controller loading?
-		void loadGainCB()
-		{
-			
-		}
-
   		void update(const ros::Time& time, const ros::Duration& period)
   		{
 			std::vector<double> & commands = *commands_buffer_.readFromRT();
-			
+			double dt = period.toSec();
+			double q_cmd_old;
+
 			// get joint states
-			static double t = 0;
+			// static double t = 0;
 			for (size_t i=0; i<n_joints_; i++)
 			{
-				q_cmd_(i) = M_PI/6*sin(t/10);//commands[i];
+				//q_cmd_(i) = M_PI/6*sin(t/10);//commands[i];
+				q_cmd_(i) = commands[i];
+
 				enforceJointLimits(q_cmd_(i), i);
 				q_(i) = joints_[i].getPosition();
 				qdot_(i) = joints_[i].getVelocity();
@@ -217,12 +344,14 @@ namespace arm_controllers{
 				{
 					q_error_(i) = q_cmd_(i) - q_(i);
 				}
+				q_error_dot_(i) = qdot_cmd_(i) - qdot_(i);
 			}
+			// t += dt;
 
 			qdot_cmd_.data = (q_cmd_.data - q_cmd_old_.data) / period.toSec();;
 			qddot_cmd_.data = (qdot_cmd_.data - qdot_cmd_old_.data) / period.toSec();
 			
-			qdot_error_.data = qdot_cmd_.data - qdot_.data;
+			q_error_dot_.data = qdot_cmd_.data - qdot_.data;
 
 			q_cmd_old_ = q_cmd_;
 			qdot_cmd_old_ = qdot_cmd_;
@@ -243,14 +372,44 @@ namespace arm_controllers{
 
 			// torque command
 			qdot_ref_ = qdot_cmd_.data + alpha_.data.cwiseProduct(q_error_.data);
-			qddot_ref_ = qddot_cmd.data + alpha_.data.cwiseProduct(qdot_error_.data);
+			qddot_ref_ = qddot_cmd.data + alpha_.data.cwiseProduct(q_error_dot_.data);
 
 			tau_cmd_.data = M_.data * qddot_ref_.data + C_.data.cwiseProduct(qdot_ref_.data) + G_.data;
 
 			for(int i=0; i<n_joints_; i++)
 			{
-				tau_cmd_(i) += pid_controllers_[i].computeCommand(q_error_(i), qdot_error_(i), period.toSec());
+				controller_state_pub_->msg_.effort_feedforward[i] = tau_cmd_(i);
+				tau_cmd_(i) += pid_controllers_[i].computeCommand(q_error_(i), q_error_dot_(i), period.toSec());
+
+				// effort saturation
+				if (tau_cmd_(i) >= joint_urdfs_[i]->limits->effort)
+					tau_cmd_(i) = joint_urdfs_[i]->limits->effort;
+				
+				if (tau_cmd_(i) <= -joint_urdfs_[i]->limits->effort)
+					tau_cmd_(i) = -joint_urdfs_[i]->limits->effort;
+
 				joints_[i].setCommand( tau_cmd_(i) );
+			}
+
+			// publish
+			if (loop_count_ % 10 == 0)
+			{
+				if (controller_state_pub_->trylock())
+				{
+					controller_state_pub_->msg_.header.stamp = time;
+					for(int i=0; i<n_joints_; i++)
+					{
+						controller_state_pub_->msg_.command[i] = R2D*q_cmd_(i);
+						controller_state_pub_->msg_.command_dot[i] = R2D*qdot_cmd_(i);
+						controller_state_pub_->msg_.state[i] = R2D*q_(i);
+						controller_state_pub_->msg_.state_dot[i] = R2D*qdot_(i);
+						controller_state_pub_->msg_.error[i] = R2D*q_error_(i);
+						controller_state_pub_->msg_.error_dot[i] = R2D*q_error_dot_(i);
+						controller_state_pub_->msg_.effort_command[i] = tau_cmd_(i);
+						controller_state_pub_->msg_.effort_feedback[i] = tau_cmd_(i) - controller_state_pub_->msg_.effort_feedforward[i];
+					}
+					controller_state_pub_->unlockAndPublish();
+				}
 			}
   		}
 
@@ -272,6 +431,8 @@ namespace arm_controllers{
 			}
 		}
 	private:
+		int loop_count_;
+
 		// joint handles
 		unsigned int n_joints_;
 		std::vector<std::string> joint_names_;
@@ -287,20 +448,24 @@ namespace arm_controllers{
 		KDL::JntArray G_;									// gravity torque vector
 		KDL::Vector gravity_;
 
-		// pid gain
-		KDL::JntArray alpha_;								// error weight in passivity-based control joint reference
-  		std::vector<control_toolbox::Pid> pid_controllers_; // Internal PID controllers
+		
 
 		// cmd, state
 		realtime_tools::RealtimeBuffer<std::vector<double> > commands_buffer_;
 		KDL::JntArray tau_cmd_;
-		KDL::JntArray qdot_ref_, qddot_ref_;				// passivity-based control joint reference
 		KDL::JntArray q_cmd_, qdot_cmd_, qddot_cmd_, q_cmd_old_, qdot_cmd_old_;
+		KDL::JntArray qdot_ref_, qddot_ref_;				// passivity-based control joint reference
 		KDL::JntArray q_, qdot_;
-		KDL::JntArray q_error_, qdot_error_;
+		KDL::JntArray q_error_, q_error_dot_;
+
+		// gain
+		std::vector<Gains*> gains_;
 
 		// topic
-		ros::Subscriber sub_command_;
+		ros::Subscriber command_sub_;
+		boost::scoped_ptr<
+			realtime_tools::RealtimePublisher<
+				arm_controllers::ControllerJointState> > controller_state_pub_;
 	};
 
 }
