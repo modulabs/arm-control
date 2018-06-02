@@ -3,7 +3,7 @@ elfin:
       type: joint_state_controller/JointStateController
       publish_rate: 1000
     
-    gravity_comp_controller:
+    passivity_controller:
       type: arm_controllers/PassivityController
       joints:
         - elfin_joint1
@@ -13,23 +13,18 @@ elfin:
         - elfin_joint5
         - elfin_joint6
       gains:
+        alpha: 10
         elfin_joint1:
-          alpha: 10
-          pd: {p: 100.0, i: 0, d: 10.0}
+          pid: {p: 100.0, i: 0, d: 10.0}
         elfin_joint2:
-          alpha: 10
-          pd: {p: 100.0, i: 0, d: 10.0}
+          pid: {p: 100.0, i: 0, d: 10.0}
         elfin_joint3: 
-          alpha: 10
-          pd: {p: 100.0, i: 0, d: 10.0}
+          pid: {p: 100.0, i: 0, d: 10.0}
         elfin_joint4:
-          alpha: 10
-          pd: {p: 100.0, i: 0, d: 10.0}
+          pid: {p: 100.0, i: 0, d: 10.0}
         elfin_joint5: 
-          alpha: 10
-          pd: {p: 100.0, i: 0, d: 10.0}
+          pid: {p: 100.0, i: 0, d: 10.0}
         elfin_joint6: 
-          alpha: 10
-          pd: {p: 100.0, i: 0, d: 10.0}
+          pid: {p: 100.0, i: 0, d: 10.0}
       root_link: world
       tip_link: elfin_link6

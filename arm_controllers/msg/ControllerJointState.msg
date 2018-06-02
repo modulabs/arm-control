@@ -7,5 +7,5 @@ float64[] state_dot
 float64[] error
 float64[] error_dot
 float64[] effort_command
-float64[] effort_gravity
+float64[] effort_feedforward
 float64[] effort_feedback

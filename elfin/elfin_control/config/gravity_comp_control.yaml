@@ -13,20 +13,6 @@ elfin:
         - elfin_joint5
         - elfin_joint6
       gains:
-<<<<<<< HEAD
-        elfin_joint1: 
-          pid: {p: 100.0, i: 10, d: 10.0}
-        elfin_joint2: 
-          pid: {p: 100.0, i: 10, d: 10.0}
-        elfin_joint3: 
-          pid: {p: 100.0, i: 10, d: 10.0}
-        elfin_joint4: 
-          pid: {p: 100.0, i: 10, d: 10.0}
-        elfin_joint5: 
-          pid: {p: 100.0, i: 10, d: 10.0}
-        elfin_joint6: 
-          pid: {p: 100.0, i: 10, d: 10.0}
-=======
         elfin_joint1:
           pid: {p: 200.0, i: 10, d: 10.0}
         elfin_joint2: 
@@ -39,6 +25,5 @@ elfin:
           pid: {p: 200.0, i: 10, d: 5.0}
         elfin_joint6: 
           pid: {p: 200.0, i: 5, d: 5.0}
->>>>>>> 721baaa226f9465ba69721d7facf867717fda12a
       root_link: world
       tip_link: elfin_link6

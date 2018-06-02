@@ -78,7 +78,7 @@
                 }, 
                 "topics": {
                   "type": "repr", 
-                  "repr": "[u'/elfin/gravity_comp_controller/state/effort_feedforward[1]', u'/elfin/gravity_comp_controller/state/effort_command[1]']"
+                  "repr": "u'/elfin/passivity_controller/state/error[4]'"
                 }, 
                 "y_limits": {
                   "type": "repr", 
@@ -86,7 +86,7 @@
                 }, 
                 "x_limits": {
                   "type": "repr", 
-                  "repr": "[73.31200000000001, 74.31200000000001]"
+                  "repr": "[120.197, 121.197]"
                 }
               }, 
               "groups": {}
@@ -125,15 +125,15 @@
                 }, 
                 "topics": {
                   "type": "repr", 
-                  "repr": "u'/elfin/gravity_comp_controller/state/effort_feedback[1]'"
+                  "repr": "u'/elfin/passivity_controller/state/error_dot[4]'"
                 }, 
                 "y_limits": {
                   "type": "repr", 
-                  "repr": "[-195.3578048789923, 195.28958766075576]"
+                  "repr": "[-193.6367471723984, 195.28958766075576]"
                 }, 
                 "x_limits": {
                   "type": "repr", 
-                  "repr": "[73.482, 74.482]"
+                  "repr": "[120.15, 121.15]"
                 }
               }, 
               "groups": {}
@@ -249,7 +249,7 @@
               "keys": {
                 "publishers": {
                   "type": "repr", 
-                  "repr": "u\"[{'type_name': 'std_msgs/Float64MultiArray', 'topic_name': '/elfin/gravity_comp_controller/command', 'enabled': False, 'rate': 1.0, 'expressions': {}, 'publisher_id': 0, 'counter': 0}]\""
+                  "repr": "u\"[{'type_name': 'std_msgs/Float64MultiArray', 'topic_name': '/elfin/passivity_controller/command', 'enabled': False, 'rate': 1.0, 'expressions': {}, 'publisher_id': 0, 'counter': 0}]\""
                 }
               }, 
               "groups": {}

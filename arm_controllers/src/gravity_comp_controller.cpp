@@ -26,100 +26,100 @@
 
 namespace arm_controllers{
 
-	class Gains
-	{
-	public:
-		Gains()
-			: p_(0.0), i_(0.0), d_(0.0)
-		{}
 
-		void setGains(double p, double i, double d)
-		{
-			p_ = p; i_ = i; d_ = d;
-		}
-
-		void setGains()
-		{
-			
-		}
-
-		void getGains(double& p, double& i, double& d)
-		{
-			p = p_; i = i_; d = d_;
-		}
-
-		void initDynamicReconfig(const ros::NodeHandle &node)
-		{
-			ROS_INFO("Init dynamic reconfig in namespace %s", node.getNamespace().c_str());
-
-			// Start dynamic reconfigure server
-			param_reconfig_server_.reset(new DynamicReconfigServer(param_reconfig_mutex_, node));
-			dynamic_reconfig_initialized_ = true;
-
-			// Set Dynamic Reconfigure's gains to Pid's values
-			updateDynamicReconfig();
-
-			// Set callback
-			param_reconfig_callback_ = boost::bind(&Gains::dynamicReconfigCallback, this, _1, _2);
-			param_reconfig_server_->setCallback(param_reconfig_callback_);
-		}
-
-		void updateDynamicReconfig()
-		{
-			// Make sure dynamic reconfigure is initialized
-			if(!dynamic_reconfig_initialized_)
-				return;
-
-			// Get starting values
-			arm_controllers::GravityCompControllerParamsConfig config;
-
-			// Get starting values
-			getGains(config.p, config.i, config.d);
-
-			updateDynamicReconfig(config);
-		}
-
-		void updateDynamicReconfig(GravityCompControllerParamsConfig config)
-		{
-			// Make sure dynamic reconfigure is initialized
-			if(!dynamic_reconfig_initialized_)
-				return;
-
-			// Set starting values, using a shared mutex with dynamic reconfig
-			param_reconfig_mutex_.lock();
-			param_reconfig_server_->updateConfig(config);
-			param_reconfig_mutex_.unlock();
-		}
-
-		void dynamicReconfigCallback(arm_controllers::GravityCompControllerParamsConfig &config, uint32_t /*level*/)
-		{
-			ROS_DEBUG_STREAM_NAMED("pid","Dynamics reconfigure callback recieved.");
-
-			// Set the gains
-			setGains(config.p, config.i, config.d);
-		}
-
-		double p_;
-		double i_;
-		double d_;
-
-	private:
-		// Store the PID gains in a realtime buffer to allow dynamic reconfigure to update it without
-		// blocking the realtime update loop
-		// realtime_tools::RealtimeBuffer<Gains> gains_buffer_;
-
-		// Dynamics reconfigure
-		bool dynamic_reconfig_initialized_;
-		typedef dynamic_reconfigure::Server<arm_controllers::GravityCompControllerParamsConfig> DynamicReconfigServer;
-		boost::shared_ptr<DynamicReconfigServer> param_reconfig_server_;
-		DynamicReconfigServer::CallbackType param_reconfig_callback_;
-
-		boost::recursive_mutex param_reconfig_mutex_;
-	};
 
 	class GravityCompController: public controller_interface::Controller<hardware_interface::EffortJointInterface>
 	{
+		class Gains
+		{
 		public:
+			Gains()
+				: p_(0.0), i_(0.0), d_(0.0)
+			{}
+
+			void setGains(double p, double i, double d)
+			{
+				p_ = p; i_ = i; d_ = d;
+			}
+
+			void setGains()
+			{
+				
+			}
+
+			void getGains(double& p, double& i, double& d)
+			{
+				p = p_; i = i_; d = d_;
+			}
+
+			void initDynamicReconfig(const ros::NodeHandle &node)
+			{
+				ROS_INFO("Init dynamic reconfig in namespace %s", node.getNamespace().c_str());
+
+				// Start dynamic reconfigure server
+				param_reconfig_server_.reset(new DynamicReconfigServer(param_reconfig_mutex_, node));
+				dynamic_reconfig_initialized_ = true;
+
+				// Set Dynamic Reconfigure's gains to Pid's values
+				updateDynamicReconfig();
+
+				// Set callback
+				param_reconfig_callback_ = boost::bind(&Gains::dynamicReconfigCallback, this, _1, _2);
+				param_reconfig_server_->setCallback(param_reconfig_callback_);
+			}
+
+			void updateDynamicReconfig()
+			{
+				// Make sure dynamic reconfigure is initialized
+				if(!dynamic_reconfig_initialized_)
+					return;
+
+				// Get starting values
+				arm_controllers::GravityCompControllerParamsConfig config;
+
+				// Get starting values
+				getGains(config.p, config.i, config.d);
+
+				updateDynamicReconfig(config);
+			}
+
+			void updateDynamicReconfig(GravityCompControllerParamsConfig config)
+			{
+				// Make sure dynamic reconfigure is initialized
+				if(!dynamic_reconfig_initialized_)
+					return;
+
+				// Set starting values, using a shared mutex with dynamic reconfig
+				param_reconfig_mutex_.lock();
+				param_reconfig_server_->updateConfig(config);
+				param_reconfig_mutex_.unlock();
+			}
+
+			void dynamicReconfigCallback(arm_controllers::GravityCompControllerParamsConfig &config, uint32_t /*level*/)
+			{
+				ROS_DEBUG_STREAM_NAMED("pid","Dynamics reconfigure callback recieved.");
+
+				// Set the gains
+				setGains(config.p, config.i, config.d);
+			}
+
+			double p_;
+			double i_;
+			double d_;
+
+		private:
+			// Store the PID gains in a realtime buffer to allow dynamic reconfigure to update it without
+			// blocking the realtime update loop
+			// realtime_tools::RealtimeBuffer<Gains> gains_buffer_;
+
+			// Dynamics reconfigure
+			bool dynamic_reconfig_initialized_;
+			typedef dynamic_reconfigure::Server<arm_controllers::GravityCompControllerParamsConfig> DynamicReconfigServer;
+			boost::shared_ptr<DynamicReconfigServer> param_reconfig_server_;
+			DynamicReconfigServer::CallbackType param_reconfig_callback_;
+
+			boost::recursive_mutex param_reconfig_mutex_;
+		};
 		
 
 		public:
@@ -284,7 +284,7 @@ namespace arm_controllers{
 				controller_state_pub_->msg_.error.push_back(0.0);
 				controller_state_pub_->msg_.error_dot.push_back(0.0);
 				controller_state_pub_->msg_.effort_command.push_back(0.0);
-				controller_state_pub_->msg_.effort_gravity.push_back(0.0);
+				controller_state_pub_->msg_.effort_feedforward.push_back(0.0);
 				controller_state_pub_->msg_.effort_feedback.push_back(0.0);
 			}
 			
@@ -298,6 +298,7 @@ namespace arm_controllers{
 			{
 				q_(i) = joints_[i].getPosition();
 				qdot_(i) = joints_[i].getVelocity();
+				q_error_int_(i) = 0.0;
 			}
 
 			ROS_INFO("Starting Gravity Compensation Controller");
@@ -323,9 +324,6 @@ namespace arm_controllers{
 			// static double t = 0;
 			for (size_t i=0; i<n_joints_; i++)
 			{
-<<<<<<< HEAD
-				//q_cmd_(i) = M_PI/6*sin(t/10);//commands[i];
-=======
 				q_cmd_old = q_cmd_(i);
 				
 				// if (i==3)
@@ -339,7 +337,6 @@ namespace arm_controllers{
 				// else
 					q_cmd_(i) = commands[i];
 
->>>>>>> 721baaa226f9465ba69721d7facf867717fda12a
 				enforceJointLimits(q_cmd_(i), i);
 				qdot_cmd_(i) = ( q_cmd_(i) - q_cmd_old )/dt;
 
@@ -366,28 +363,17 @@ namespace arm_controllers{
 				}
 				q_error_dot_(i) = qdot_cmd_(i) - qdot_(i);
 			}
-			// t += dt;
-			
-<<<<<<< HEAD
-			// double dt = period.toSec();
-			// if (t==10)
-			// {
-			// 	ROS_INFO("q_cmd = %.3f, %.3f, %.3f, %.3f, %.3f, %.3f", 
-			// 		q_cmd_(0), q_cmd_(1), q_cmd_(2), q_cmd_(3), q_cmd_(4), q_cmd_(5));
-			// 	t = 0;
-			// }
-			t++;
+
+//			t++;
 			
 			// compute gravity torque
-=======
->>>>>>> 721baaa226f9465ba69721d7facf867717fda12a
 			id_solver_->JntToGravity(q_, G_);
 
 			// torque command
 			for(int i=0; i<n_joints_; i++)
 			{
-				// // i clamp
-				// q_error_int_(i) += q_error_(i);
+				// i clamp
+				q_error_int_(i) += q_error_(i)*dt;
 				// if (q_error_int_(i) >= i_clamp_max_(i))
 				// 	q_error_int_(i) = i_clamp_max_(i);
 				// else if (q_error_int_(i) <= i_clamp_min_(i))
@@ -421,7 +407,7 @@ namespace arm_controllers{
 						controller_state_pub_->msg_.error[i] = R2D*q_error_(i);
 						controller_state_pub_->msg_.error_dot[i] = R2D*q_error_dot_(i);
 						controller_state_pub_->msg_.effort_command[i] = tau_cmd_(i);
-						controller_state_pub_->msg_.effort_gravity[i] = G_(i);
+						controller_state_pub_->msg_.effort_feedforward[i] = G_(i);
 						controller_state_pub_->msg_.effort_feedback[i] = tau_cmd_(i) - G_(i);
 					}
 					controller_state_pub_->unlockAndPublish();

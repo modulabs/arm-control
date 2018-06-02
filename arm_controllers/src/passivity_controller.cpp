@@ -17,9 +17,14 @@
 
 #include <boost/scoped_ptr.hpp>
 
+#include "arm_controllers/ControllerJointState.h"
+#include "arm_controllers/PassivityControllerParamsConfig.h"
+
+#define PI 3.141592
+#define D2R PI/180.0
+#define R2D 180.0/PI
+
 namespace arm_controllers{
-
-
 
 	class PassivityController: public controller_interface::Controller<hardware_interface::EffortJointInterface>
 	{
@@ -27,12 +32,12 @@ namespace arm_controllers{
 		{
 		public:
 			Gains()
-				: alpha_(0.0), p_(0.0), d_(0.0)
+				//: /*alpha_(0.0), p_(0.0), i_(0.0, d_(0.0) */
 			{}
 
-			void setGains(double alpha, double p, double d)
+			void setGains(/*double alpha,*/ double p, double i, double d)
 			{
-				alpha_ = alpha; p_ = p; d_ = d;
+				/*alpha_ = alpha;*/ p_ = p; i_ = i; d_ = d;
 			}
 
 			void setGains()
@@ -40,9 +45,9 @@ namespace arm_controllers{
 				
 			}
 
-			void getGains(double& alpha, double& p, double& d)
+			void getGains(/*double& alpha,*/ double& p, double& i, double& d)
 			{
-				alpha = alpha_; p = p_; d = d_;
+				/*alpha = alpha_; */p = p_; i = i_; d = d_;
 			}
 
 			void initDynamicReconfig(const ros::NodeHandle &node)
@@ -68,15 +73,15 @@ namespace arm_controllers{
 					return;
 
 				// Get starting values
-				arm_controllers::GravityCompControllerParamsConfig config;
+				arm_controllers::PassivityControllerParamsConfig config;
 
 				// Get starting values
-				getGains(config.alpha, config.p, config.d);
+				getGains(/*config.alpha,*/ config.p, config.i, config.d);
 
 				updateDynamicReconfig(config);
 			}
 
-			void updateDynamicReconfig(GravityCompControllerParamsConfig config)
+			void updateDynamicReconfig(PassivityControllerParamsConfig config)
 			{
 				// Make sure dynamic reconfigure is initialized
 				if(!dynamic_reconfig_initialized_)
@@ -88,16 +93,17 @@ namespace arm_controllers{
 				param_reconfig_mutex_.unlock();
 			}
 
-			void dynamicReconfigCallback(arm_controllers::GravityCompControllerParamsConfig &config, uint32_t /*level*/)
+			void dynamicReconfigCallback(arm_controllers::PassivityControllerParamsConfig &config, uint32_t /*level*/)
 			{
 				ROS_DEBUG_STREAM_NAMED("passivity gain","Dynamics reconfigure callback recieved.");
 
 				// Set the gains
-				setGains(config.alpha, config.p, config.d);
+				setGains(/*config.alpha,*/ config.p, config.i, config.d);
 			}
 
-			double alpha_;
+			// double alpha_;
 			double p_;
+			double i_;
 			double d_;
 
 		private:
@@ -107,7 +113,7 @@ namespace arm_controllers{
 
 			// Dynamics reconfigure
 			bool dynamic_reconfig_initialized_;
-			typedef dynamic_reconfigure::Server<arm_controllers::GravityCompControllerParamsConfig> DynamicReconfigServer;
+			typedef dynamic_reconfigure::Server<arm_controllers::PassivityControllerParamsConfig> DynamicReconfigServer;
 			boost::shared_ptr<DynamicReconfigServer> param_reconfig_server_;
 			DynamicReconfigServer::CallbackType param_reconfig_callback_;
 
@@ -234,20 +240,30 @@ namespace arm_controllers{
 
 			q_error_.data = Eigen::VectorXd::Zero(n_joints_);
 			q_error_dot_.data = Eigen::VectorXd::Zero(n_joints_);
+			q_error_int_.data = Eigen::VectorXd::Zero(n_joints_);
+
 
 			// gains
+			if (!n.getParam("gains/alpha", alpha_))
+			{
+				ROS_ERROR("Could not find alpha gain in %s", "gains/alpha");
+				return false;
+			}
+
 			for (size_t i=0; i<n_joints_; i++)
 			{
 				gains_.push_back(new Gains());
-				if (!n.getParam("gains/" + joint_names_[i] + "/alpha", gains_[i]->alpha_))
-				{
-					ROS_ERROR("Could not find alpha gain in %s", ("gains/"+joint_names_[i]+"/alpha").c_str());
-					return false;
-				}
+
 
 				if (!n.getParam("gains/" + joint_names_[i] + "/pid/p", gains_[i]->i_))
 				{
-					ROS_ERROR("Could not find p gain in %s", ("gains/"+joint_names_[i]+"/pid/pi").c_str());
+					ROS_ERROR("Could not find p gain in %s", ("gains/"+joint_names_[i]+"/pid/p").c_str());
+					return false;
+				}
+
+				if (!n.getParam("gains/" + joint_names_[i] + "/pid/i", gains_[i]->i_))
+				{
+					ROS_ERROR("Could not find i gain in %s", ("gains/"+joint_names_[i]+"/pid/i").c_str());
 					return false;
 				}
 
@@ -256,14 +272,13 @@ namespace arm_controllers{
 					ROS_ERROR("Could not find d gain in %s", ("gains/"+joint_names_[i]+"/pid/d").c_str());
 					return false;
 				}
-
 				
 				gains_[i]->initDynamicReconfig(ros::NodeHandle(n, "gains/"+joint_names_[i]));
 			}
 
 			// command subscriber
 			commands_buffer_.writeFromNonRT(std::vector<double>(n_joints_, 0.0));
-			command_sub_ = n.subscribe<std_msgs:Float64MultiArray>("command", 1, &PassivityController::commandCB, this);
+			command_sub_ = n.subscribe<std_msgs::Float64MultiArray>("command", 1, &PassivityController::commandCB, this);
 
 			// start realtime state publisher
 			controller_state_pub_.reset(
@@ -294,6 +309,7 @@ namespace arm_controllers{
 			{
 				q_(i) = joints_[i].getPosition();
 				qdot_(i) = joints_[i].getVelocity();
+				q_error_int_(i) = 0;
 			}
 
 			ROS_INFO("Starting Passivity Based Controller");
@@ -363,23 +379,25 @@ namespace arm_controllers{
 			// 		q_cmd_(0), q_cmd_(1), q_cmd_(2), q_cmd_(3), q_cmd_(4), q_cmd_(5));
 			// 	t = 0;
 			// }
-			t++;
+			// t++;
 			
-			// compute gravity torque
+			// compute dynamics term
 			id_solver_->JntToMass(q_, M_);
-			id_solver_->JntToCoriolis(q_, C_);
+			id_solver_->JntToCoriolis(q_, qdot_, C_);
 			id_solver_->JntToGravity(q_, G_);
 
 			// torque command
-			qdot_ref_ = qdot_cmd_.data + alpha_.data.cwiseProduct(q_error_.data);
-			qddot_ref_ = qddot_cmd.data + alpha_.data.cwiseProduct(q_error_dot_.data);
+			qdot_ref_.data = qdot_cmd_.data + alpha_*q_error_.data;
+			qddot_ref_.data = qddot_cmd_.data + alpha_*q_error_dot_.data;
 
-			tau_cmd_.data = M_.data * qddot_ref_.data + C_.data.cwiseProduct(qdot_ref_.data) + G_.data;
+			tau_cmd_.data = M_.data * qddot_ref_.data + C_.data + G_.data;
 
 			for(int i=0; i<n_joints_; i++)
 			{
+				q_error_int_(i) += q_error_(i)*dt;
+
 				controller_state_pub_->msg_.effort_feedforward[i] = tau_cmd_(i);
-				tau_cmd_(i) += pid_controllers_[i].computeCommand(q_error_(i), q_error_dot_(i), period.toSec());
+				tau_cmd_(i) += gains_[i]->p_*q_error_(i) + gains_[i]->i_*q_error_int_(i) + gains_[i]->d_*q_error_dot_(i);
 
 				// effort saturation
 				if (tau_cmd_(i) >= joint_urdfs_[i]->limits->effort)
@@ -456,9 +474,10 @@ namespace arm_controllers{
 		KDL::JntArray q_cmd_, qdot_cmd_, qddot_cmd_, q_cmd_old_, qdot_cmd_old_;
 		KDL::JntArray qdot_ref_, qddot_ref_;				// passivity-based control joint reference
 		KDL::JntArray q_, qdot_;
-		KDL::JntArray q_error_, q_error_dot_;
+		KDL::JntArray q_error_, q_error_dot_, q_error_int_;
 
 		// gain
+		double alpha_;
 		std::vector<Gains*> gains_;
 
 		// topic

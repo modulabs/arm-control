@@ -14,6 +14,7 @@ find_package(catkin REQUIRED COMPONENTS
 # Dynamics reconfigure
 generate_dynamic_reconfigure_options(
   cfg/GravityCompControllerParams.cfg
+  cfg/PassivityControllerParams.cfg
   )
 
 # message

@@ -78,15 +78,15 @@
                 }, 
                 "topics": {
                   "type": "repr", 
-                  "repr": "[u'/elfin/gravity_comp_controller/state/effort_feedforward[1]', u'/elfin/gravity_comp_controller/state/effort_command[1]']"
+                  "repr": "[u'/elfin/passivity_controller/state/effort_feedforward[4]', u'/elfin/passivity_controller/state/effort_command[4]']"
                 }, 
                 "y_limits": {
                   "type": "repr", 
-                  "repr": "[-44.99999924915964, 44.99999925452271]"
+                  "repr": "[-46.86817767683587, 46.45433711090209]"
                 }, 
                 "x_limits": {
                   "type": "repr", 
-                  "repr": "[73.31200000000001, 74.31200000000001]"
+                  "repr": "[143.586, 144.586]"
                 }
               }, 
               "groups": {}
@@ -125,7 +125,7 @@
                 }, 
                 "topics": {
                   "type": "repr", 
-                  "repr": "u'/elfin/gravity_comp_controller/state/effort_feedback[1]'"
+                  "repr": "u'/elfin/passivity_controller/state/effort_feedback[4]'"
                 }, 
                 "y_limits": {
                   "type": "repr", 
@@ -133,7 +133,7 @@
                 }, 
                 "x_limits": {
                   "type": "repr", 
-                  "repr": "[73.482, 74.482]"
+                  "repr": "[143.515, 144.515]"
                 }
               }, 
               "groups": {}
@@ -249,7 +249,7 @@
               "keys": {
                 "publishers": {
                   "type": "repr", 
-                  "repr": "u\"[{'type_name': 'std_msgs/Float64MultiArray', 'topic_name': '/elfin/gravity_comp_controller/command', 'enabled': False, 'rate': 1.0, 'expressions': {}, 'publisher_id': 0, 'counter': 0}]\""
+                  "repr": "u\"[{'type_name': 'std_msgs/Float64MultiArray', 'topic_name': '/elfin/passivity_controller/command', 'enabled': False, 'rate': 1.0, 'expressions': {}, 'publisher_id': 0, 'counter': 0}]\""
                 }
               }, 
               "groups": {}
