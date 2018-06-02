@@ -28,7 +28,7 @@ elfin:
           pid: {p: 100.0, i: 0, d: 20.0}
 
       root_link: world
-      tip_link: elfin_link6
+      tip_link: elfin_dummy_gripper
 
       ctr_obj: 1  # ctr_obj = 1: Regulation 
                   # ctr_obj = 2: Tracking
@@ -36,4 +36,4 @@ elfin:
       ik_mode: 2 # open-loop inverse kinematics using jacobian
                  # closed-loop inverse Kinematics using jacobian
 
-      clik_gain: {K_regulation: 6.0, K_tracking: 1.0}
+      clik_gain: {K_regulation: 5.0, K_tracking: 1.0}

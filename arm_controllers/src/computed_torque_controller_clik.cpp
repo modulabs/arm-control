@@ -329,7 +329,7 @@ class Computed_Torque_Controller_CLIK : public controller_interface::Controller<
             if (event == 0) // initial command
             {
                 xd_.p(0) = 0.0;
-                xd_.p(1) = -0.32;
+                xd_.p(1) = -0.4362;
                 xd_.p(2) = 0.56;
                 xd_.M = KDL::Rotation(KDL::Rotation::RPY(0, 0, 0));
             }
