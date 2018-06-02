@@ -1,0 +1,5 @@
+<launch>
+  <include file="$(find elfin_gazebo)/launch/elfin3_no_fric_no_joint_limit_world.launch" />
+
+  <include file="$(find elfin_control)/launch/computed_torque_control_clik.launch" />
+</launch>

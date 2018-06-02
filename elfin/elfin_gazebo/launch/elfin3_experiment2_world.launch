@@ -1,0 +1,17 @@
+<launch>
+
+  <include file="$(find gazebo_ros)/launch/empty_world.launch"/>
+
+  <group ns="elfin">  
+    <param name="robot_description" command="$(find xacro)/xacro.py --inorder '$(find elfin_description)/urdf/elfin3_experiment1.urdf.xacro'" />
+      
+    <node name="urdf_spawner1" pkg="gazebo_ros" type="spawn_model" respawn="false" output="screen" args="-urdf -model elfin3 -param robot_description"/>
+  </group>
+
+  <group ns="box_circle">
+    <param name="robot_description" command="$(find xacro)/xacro.py --inorder '$(find elfin_description)/urdf/box_circle.urdf.xacro'" />
+      
+    <node name="urdf_spawner2" pkg="gazebo_ros" type="spawn_model" respawn="false" output="screen" args="-urdf -model box -param robot_description"/> 
+  </group>
+  
+</launch>

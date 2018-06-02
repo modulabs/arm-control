@@ -25,10 +25,21 @@ Install effort-controllers to use torque-control interface
 
 ### Run
 Depending on the controller you want to run, use suitable launch file.
+If you want to use motion controller in joint space, then you may choose this controllers as follows:
 
     $ roslaunch elfin_launch elfin_gravity_comp_control.launch
     or
     $ roslaunch elfin_launch elfin_time_delay_control.launch
+    or
+    $ roslaunch elfin_launch elfin_computed_torque_control.launch
+
+If you want to use motion controller in task space, then you may choose this controllers as follows:
+
+    $ roslaunch elfin_launch elfin_computed_torque_control_clik.launch
+
+If you want to use motion and force controller in task space, then you may choose this controllers as follows:
+
+    $ roslaunch elfin_launch elfin_adaptive_variable_impedance_control.launch 
 
 ## Reference
 1. [ros-control](http://wiki.ros.org/ros_control)

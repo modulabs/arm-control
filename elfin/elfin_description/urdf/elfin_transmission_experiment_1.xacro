@@ -61,5 +61,15 @@
         <mechanicalReduction>1</mechanicalReduction>
       </actuator>
     </transmission>
-  
+
+    <transmission name="elfin_joint7_trans">
+      <type>transmission_interface/SimpleTransmission</type>
+      <joint name="ft_sensor_joint">
+        <hardwareInterface>hardware_interface/EffortJointInterface</hardwareInterface>
+      </joint>
+      <actuator name="ft_sensor_joint_motor">
+        <mechanicalReduction>1</mechanicalReduction>
+      </actuator>
+    </transmission>
+    
 </robot>
