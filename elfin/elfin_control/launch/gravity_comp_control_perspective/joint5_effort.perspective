@@ -78,7 +78,7 @@
                 }, 
                 "topics": {
                   "type": "repr", 
-                  "repr": "[u'/elfin/gravity_comp_controller/state/effort_gravity[4]', u'/elfin/gravity_comp_controller/state/effort_command[4]']"
+                  "repr": "[u'/elfin/gravity_comp_controller/state/effort_feedforward[4]', u'/elfin/gravity_comp_controller/state/effort_command[4]']"
                 }, 
                 "y_limits": {
                   "type": "repr", 

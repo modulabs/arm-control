@@ -30,5 +30,10 @@
     </description>
   </class>
 
+  <class name="arm_controllers/PassivityController" type="arm_controllers::PassivityController" base_class_type="controller_interface::ControllerBase">
+    <description>
+      Passivity Based Controller
+    </description>
+  </class>
 </library>
 

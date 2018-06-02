@@ -14,6 +14,7 @@ find_package(catkin REQUIRED COMPONENTS
 # Dynamics reconfigure
 generate_dynamic_reconfigure_options(
   cfg/GravityCompControllerParams.cfg
+  cfg/PassivityControllerParams.cfg
   )
 
 # message
@@ -41,6 +42,7 @@ add_library(${PROJECT_NAME}
   src/computed_torque_controller.cpp
   src/computed_torque_controller_clik.cpp
   src/adaptive_variable_impedance_controller.cpp
+  src/passivity_controller.cpp
 )
 
 target_link_libraries(${PROJECT_NAME} ${catkin_LIBRARIES})

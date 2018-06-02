@@ -78,7 +78,7 @@
                 }, 
                 "topics": {
                   "type": "repr", 
-                  "repr": "[u'/elfin/gravity_comp_controller/state/effort_feedforward[1]', u'/elfin/gravity_comp_controller/state/effort_command[1]']"
+                  "repr": "[u'/elfin/passivity_controller/state/effort_feedforward[1]', u'/elfin/passivity_controller/state/effort_command[1]']"
                 }, 
                 "y_limits": {
                   "type": "repr", 
@@ -125,7 +125,7 @@
                 }, 
                 "topics": {
                   "type": "repr", 
-                  "repr": "u'/elfin/gravity_comp_controller/state/effort_feedback[1]'"
+                  "repr": "u'/elfin/passivity_controller/state/effort_feedback[1]'"
                 }, 
                 "y_limits": {
                   "type": "repr", 
@@ -249,7 +249,7 @@
               "keys": {
                 "publishers": {
                   "type": "repr", 
-                  "repr": "u\"[{'type_name': 'std_msgs/Float64MultiArray', 'topic_name': '/elfin/gravity_comp_controller/command', 'enabled': False, 'rate': 1.0, 'expressions': {}, 'publisher_id': 0, 'counter': 0}]\""
+                  "repr": "u\"[{'type_name': 'std_msgs/Float64MultiArray', 'topic_name': '/elfin/passivity_controller/command', 'enabled': False, 'rate': 1.0, 'expressions': {}, 'publisher_id': 0, 'counter': 0}]\""
                 }
               }, 
               "groups": {}
