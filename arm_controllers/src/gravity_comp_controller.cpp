@@ -323,22 +323,14 @@ namespace arm_controllers{
 			for (size_t i=0; i<n_joints_; i++)
 			{
 				q_cmd_old = q_cmd_(i);
-				
-				// if (i==3)
-				// {
+
+				//q_cmd_(i) = commands[i];				
 				q_cmd_(i) = 45*D2R*sin(PI/2*t);
-				// }
-				// // else if (i==4)
-				// // {
-				// // 	q_cmd_(4) = 90*D2R;
-				// // }
-				// else
-				//q_cmd_(i) = commands[i];
 
 				enforceJointLimits(q_cmd_(i), i);
-				qdot_cmd_(i) = ( q_cmd_(i) - q_cmd_old )/dt;
+				// qdot_cmd_(i) = ( q_cmd_(i) - q_cmd_old )/dt;
+				q_cmd_(i) = 45*D2R*PI/2*cos(PI/2*t);
 				
-
 				q_(i) = joints_[i].getPosition();
 				qdot_(i) = joints_[i].getVelocity();
 

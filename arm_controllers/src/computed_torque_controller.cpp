@@ -247,9 +247,9 @@ class Computed_Torque_Controller : public controller_interface::Controller<hardw
 
         for (size_t i = 0; i < n_joints_; i++)
         {
-            qd_ddot_(i) = -M_PI * M_PI * 10 * KDL::deg2rad * sin(M_PI * t); 
-            qd_dot_(i) = M_PI * 10 * KDL::deg2rad * cos(M_PI * t);          
-            qd_(i) = 10 * KDL::deg2rad * sin(M_PI * t);
+            qd_ddot_(i) = -M_PI * M_PI / 4 * 45 * KDL::deg2rad * sin(M_PI / 2 * t); 
+            qd_dot_(i) = M_PI / 2 * 45 * KDL::deg2rad * cos(M_PI / 2 * t);          
+            qd_(i) = 45 * KDL::deg2rad * sin(M_PI / 2* t);
         }
 
         // ********* 2. Motion Controller in Joint Space*********

@@ -140,7 +140,7 @@ namespace arm_controllers{
 			}
 			
 			mag_ = 45.0*D2R;
-			feq_ = 0.3;
+			feq_ = 0.5;
 				
 			Mbar_[0] = 0.01;
 			Mbar_[1] = 0.01;
