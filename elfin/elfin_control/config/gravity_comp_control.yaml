@@ -20,7 +20,7 @@ elfin:
         elfin_joint3:
           pid: {p: 200.0, i: 10, d: 10.0}
         elfin_joint4: 
-          pid: {p: 50.0, i: 0, d: 0.0}
+          pid: {p: 200.0, i: 10, d: 0.0}
         elfin_joint5: 
           pid: {p: 200.0, i: 10, d: 5.0}
         elfin_joint6: 

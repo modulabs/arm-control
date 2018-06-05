@@ -26,8 +26,6 @@
 
 namespace arm_controllers{
 
-
-
 	class GravityCompController: public controller_interface::Controller<hardware_interface::EffortJointInterface>
 	{
 		class Gains
@@ -321,24 +319,25 @@ namespace arm_controllers{
 			double q_cmd_old;
 
 			// get joint states
-			// static double t = 0;
+			static double t = 0;
 			for (size_t i=0; i<n_joints_; i++)
 			{
 				q_cmd_old = q_cmd_(i);
 				
 				// if (i==3)
 				// {
-				// q_cmd_(i) = 45*D2R*sin(PI/2*t);
+				q_cmd_(i) = 45*D2R*sin(PI/2*t);
 				// }
 				// // else if (i==4)
 				// // {
 				// // 	q_cmd_(4) = 90*D2R;
 				// // }
 				// else
-					q_cmd_(i) = commands[i];
+				//q_cmd_(i) = commands[i];
 
 				enforceJointLimits(q_cmd_(i), i);
 				qdot_cmd_(i) = ( q_cmd_(i) - q_cmd_old )/dt;
+				
 
 				q_(i) = joints_[i].getPosition();
 				qdot_(i) = joints_[i].getVelocity();
@@ -364,7 +363,7 @@ namespace arm_controllers{
 				q_error_dot_(i) = qdot_cmd_(i) - qdot_(i);
 			}
 
-//			t++;
+			t += dt;
 			
 			// compute gravity torque
 			id_solver_->JntToGravity(q_, G_);

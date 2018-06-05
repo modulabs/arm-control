@@ -332,11 +332,11 @@ namespace arm_controllers{
 			double q_cmd_old;
 
 			// get joint states
-			// static double t = 0;
+			static double t = 0;
 			for (size_t i=0; i<n_joints_; i++)
 			{
-				//q_cmd_(i) = M_PI/6*sin(t/10);//commands[i];
-				q_cmd_(i) = commands[i];
+				q_cmd_(i) = 45*D2R*sin(PI/2*t);
+				//q_cmd_(i) = commands[i];
 
 				enforceJointLimits(q_cmd_(i), i);
 				q_(i) = joints_[i].getPosition();
@@ -360,26 +360,17 @@ namespace arm_controllers{
 				{
 					q_error_(i) = q_cmd_(i) - q_(i);
 				}
+
+				qdot_cmd_(i) = 45*D2R*PI/2*cos(PI/2*t); // (q_cmd_(i) - q_cmd_old_(i)) / period.toSec();;
+				qddot_cmd_(i) = -45*D2R*PI*PI/2/2*sin(PI/2*t); // (qdot_cmd_(i) - qdot_cmd_old_(i)) / period.toSec();
+
 				q_error_dot_(i) = qdot_cmd_(i) - qdot_(i);
+
+				q_cmd_old_(i) = q_cmd_(i);
+				qdot_cmd_old_(i) = qdot_cmd_(i);
 			}
-			// t += dt;
-
-			qdot_cmd_.data = (q_cmd_.data - q_cmd_old_.data) / period.toSec();;
-			qddot_cmd_.data = (qdot_cmd_.data - qdot_cmd_old_.data) / period.toSec();
 			
-			q_error_dot_.data = qdot_cmd_.data - qdot_.data;
-
-			q_cmd_old_ = q_cmd_;
-			qdot_cmd_old_ = qdot_cmd_;
-
-			// double dt = period.toSec();
-			// if (t==10)
-			// {
-			// 	ROS_INFO("q_cmd = %.3f, %.3f, %.3f, %.3f, %.3f, %.3f", 
-			// 		q_cmd_(0), q_cmd_(1), q_cmd_(2), q_cmd_(3), q_cmd_(4), q_cmd_(5));
-			// 	t = 0;
-			// }
-			// t++;
+			t += dt;
 			
 			// compute dynamics term
 			id_solver_->JntToMass(q_, M_);
