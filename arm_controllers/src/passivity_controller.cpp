@@ -28,28 +28,25 @@ namespace arm_controllers{
 
 	class PassivityController: public controller_interface::Controller<hardware_interface::EffortJointInterface>
 	{
-		class Gains
+		class GainsHandler
 		{
 		public:
-			Gains()
-				//: alpha_(0.0)
-			{}
+			struct Gains
+			{
+				Gains() : alpha_(0.0)	{}
+				Gains(double alpha) : alpha_(alpha)	{}
+
+				double alpha_;	// it's only one gain, but  make it structure for unity with the controller having multiple gains
+			};
+
+			GainsHandler()	{}
 			
-			void set(double alpha)
-			{
-				alpha_ = alpha;
-			}
-
-			void get(double& alpha)
-			{
-				alpha = alpha_;
-			}
-
 			bool initDynamicReconfig(const ros::NodeHandle &node)
 			{
 				ROS_INFO("Init dynamic reconfig in namespace %s", node.getNamespace().c_str());
 
-				if (!node.getParam("alpha", alpha_))
+				Gains gains;
+				if (!node.getParam("alpha", gains.alpha_))
 				{
 					ROS_ERROR("Could not find p gain in %s", (node.getNamespace()+"/alpha").c_str());
 					return false;
@@ -59,14 +56,41 @@ namespace arm_controllers{
 				param_reconfig_server_.reset(new DynamicReconfigServer(param_reconfig_mutex_, node));
 				dynamic_reconfig_initialized_ = true;
 
+				setGains(gains);
+
 				// Set Dynamic Reconfigure's gains to Pid's values
 				updateDynamicReconfig();
 
 				// Set callback
-				param_reconfig_callback_ = boost::bind(&Gains::dynamicReconfigCallback, this, _1, _2);
+				param_reconfig_callback_ = boost::bind(&GainsHandler::dynamicReconfigCallback, this, _1, _2);
 				param_reconfig_server_->setCallback(param_reconfig_callback_);
 
 				return true;
+			}
+
+			void getGains(double &alpha)
+			{
+				Gains gains = *gains_buffer_.readFromRT();
+				alpha     = gains.alpha_;
+			}
+
+			Gains getGains()
+			{
+			  	return *gains_buffer_.readFromRT();
+			}
+
+			void setGains(double alpha)
+			{
+				Gains gains(alpha);
+
+				setGains(gains);
+			}
+
+			void setGains(const Gains &gains)
+			{
+				gains_buffer_.writeFromNonRT(gains);
+
+				updateDynamicReconfig(gains);
 			}
 
 			void updateDynamicReconfig()
@@ -76,10 +100,22 @@ namespace arm_controllers{
 					return;
 
 				// Get starting values
-				arm_controllers::PassivityControllerParamsConfig config;
+				PassivityControllerParamsConfig config;
+				getGains(config.alpha);
 
-				// Get starting values
-				get(config.alpha);
+				updateDynamicReconfig(config);
+			}
+
+			void updateDynamicReconfig(Gains gains)
+			{
+				// Make sure dynamic reconfigure is initialized
+				if(!dynamic_reconfig_initialized_)
+					return;
+
+				PassivityControllerParamsConfig config;
+
+				// Convert to dynamic reconfigure format
+				config.alpha = gains.alpha_;
 
 				updateDynamicReconfig(config);
 			}
@@ -96,20 +132,21 @@ namespace arm_controllers{
 				param_reconfig_mutex_.unlock();
 			}
 
-			void dynamicReconfigCallback(arm_controllers::PassivityControllerParamsConfig &config, uint32_t /*level*/)
+			void dynamicReconfigCallback(PassivityControllerParamsConfig &config, uint32_t /*level*/)
 			{
 				ROS_DEBUG_STREAM_NAMED("passivity gain","Dynamics reconfigure callback recieved.");
 
 				// Set the gains
-				set(config.alpha);
+				setGains(config.alpha);
 			}
 
-			double alpha_;
+
+			
 
 		private:
 			// Store the gains in a realtime buffer to allow dynamic reconfigure to update it without
 			// blocking the realtime update loop
-			realtime_tools::RealtimeBuffer<double> gains_buffer_;	// to do: consider real-time thread
+			realtime_tools::RealtimeBuffer<Gains> gains_buffer_;
 
 			// Dynamics reconfigure
 			bool dynamic_reconfig_initialized_;
@@ -234,7 +271,7 @@ namespace arm_controllers{
 			q_error_dot_.data = Eigen::VectorXd::Zero(n_joints_);
 
 			// gains
-			if (!gains_.initDynamicReconfig(ros::NodeHandle(n, "gains/")) )
+			if (!gains_handler_.initDynamicReconfig(ros::NodeHandle(n, "gains/")) )
 			{
 				ROS_ERROR_STREAM("Failed to load alpha gain parameter from gains");
 				return false;
@@ -351,8 +388,9 @@ namespace arm_controllers{
 			id_solver_->JntToGravity(q_, G_);
 
 			// torque command
-			qdot_ref_.data = qdot_cmd_.data + gains_.alpha_*q_error_.data;
-			qddot_ref_.data = qddot_cmd_.data + gains_.alpha_*q_error_dot_.data;
+			GainsHandler::Gains gains = gains_handler_.getGains();
+			qdot_ref_.data = qdot_cmd_.data + gains.alpha_*q_error_.data;
+			qddot_ref_.data = qddot_cmd_.data + gains.alpha_*q_error_dot_.data;
 
 			tau_cmd_.data = M_.data * qddot_ref_.data + C_.data + G_.data;
 
@@ -439,7 +477,7 @@ namespace arm_controllers{
 		KDL::JntArray q_error_, q_error_dot_;
 
 		// gain
-		Gains gains_;										// alpha gain(dynamic reconfigured)
+		GainsHandler gains_handler_;				// alpha gain(dynamic reconfigured)
 		std::vector<control_toolbox::Pid> pids_; // Internal PID controllers in ros-control
 
 		// topic
