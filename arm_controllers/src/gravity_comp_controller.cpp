@@ -18,7 +18,7 @@
 #include <boost/scoped_ptr.hpp>
 
 #include "arm_controllers/ControllerJointState.h"
-#include "arm_controllers/GravityCompControllerParamsConfig.h"
+#include "pid.h"
 
 #define PI 3.141592
 #define D2R PI/180.0
@@ -28,110 +28,10 @@ namespace arm_controllers{
 
 	class GravityCompController: public controller_interface::Controller<hardware_interface::EffortJointInterface>
 	{
-		class Gains
-		{
-		public:
-			Gains()
-				: p_(0.0), i_(0.0), d_(0.0)
-			{}
-
-			void setGains(double p, double i, double d)
-			{
-				p_ = p; i_ = i; d_ = d;
-			}
-
-			void setGains()
-			{
-				
-			}
-
-			void getGains(double& p, double& i, double& d)
-			{
-				p = p_; i = i_; d = d_;
-			}
-
-			void initDynamicReconfig(const ros::NodeHandle &node)
-			{
-				ROS_INFO("Init dynamic reconfig in namespace %s", node.getNamespace().c_str());
-
-				// Start dynamic reconfigure server
-				param_reconfig_server_.reset(new DynamicReconfigServer(param_reconfig_mutex_, node));
-				dynamic_reconfig_initialized_ = true;
-
-				// Set Dynamic Reconfigure's gains to Pid's values
-				updateDynamicReconfig();
-
-				// Set callback
-				param_reconfig_callback_ = boost::bind(&Gains::dynamicReconfigCallback, this, _1, _2);
-				param_reconfig_server_->setCallback(param_reconfig_callback_);
-			}
-
-			void updateDynamicReconfig()
-			{
-				// Make sure dynamic reconfigure is initialized
-				if(!dynamic_reconfig_initialized_)
-					return;
-
-				// Get starting values
-				arm_controllers::GravityCompControllerParamsConfig config;
-
-				// Get starting values
-				getGains(config.p, config.i, config.d);
-
-				updateDynamicReconfig(config);
-			}
-
-			void updateDynamicReconfig(GravityCompControllerParamsConfig config)
-			{
-				// Make sure dynamic reconfigure is initialized
-				if(!dynamic_reconfig_initialized_)
-					return;
-
-				// Set starting values, using a shared mutex with dynamic reconfig
-				param_reconfig_mutex_.lock();
-				param_reconfig_server_->updateConfig(config);
-				param_reconfig_mutex_.unlock();
-			}
-
-			void dynamicReconfigCallback(arm_controllers::GravityCompControllerParamsConfig &config, uint32_t /*level*/)
-			{
-				ROS_DEBUG_STREAM_NAMED("pid","Dynamics reconfigure callback recieved.");
-
-				// Set the gains
-				setGains(config.p, config.i, config.d);
-			}
-
-			double p_;
-			double i_;
-			double d_;
-
-		private:
-			// Store the PID gains in a realtime buffer to allow dynamic reconfigure to update it without
-			// blocking the realtime update loop
-			// realtime_tools::RealtimeBuffer<Gains> gains_buffer_;
-
-			// Dynamics reconfigure
-			bool dynamic_reconfig_initialized_;
-			typedef dynamic_reconfigure::Server<arm_controllers::GravityCompControllerParamsConfig> DynamicReconfigServer;
-			boost::shared_ptr<DynamicReconfigServer> param_reconfig_server_;
-			DynamicReconfigServer::CallbackType param_reconfig_callback_;
-
-			boost::recursive_mutex param_reconfig_mutex_;
-		};
-		
-
 		public:
 		~GravityCompController() 
 		{
 			command_sub_.shutdown();
-			for (int i=0; i<n_joints_; i++)
-			{
-				if (gains_[i] != NULL)
-				{
-					delete gains_[i];
-					gains_[i] = NULL;
-				}	
-			}
 		}
 
 		bool init(hardware_interface::EffortJointInterface* hw, ros::NodeHandle &n)
@@ -236,31 +136,16 @@ namespace arm_controllers{
 			q_error_dot_ = Eigen::VectorXd::Zero(n_joints_);
 			q_error_int_ = Eigen::VectorXd::Zero(n_joints_);
 
-			// gains
-			// gains_.resize(n_joints_);
+			// pids
+			// pids_.resize(n_joints_);
+			
 			for (size_t i=0; i<n_joints_; i++)
 			{
-				gains_.push_back(new Gains());
-				if (!n.getParam("gains/" + joint_names_[i] + "/pid/p", gains_[i]->p_))
-				{
-					ROS_ERROR("Could not find p gain in %s", ("gains/"+joint_names_[i]+"/pid/p").c_str());
-					return false;
-				}
+				pids_.push_back(PidPtr(new Pid));
 
-				if (!n.getParam("gains/" + joint_names_[i] + "/pid/i", gains_[i]->i_))
-				{
-					ROS_ERROR("Could not find i gain in %s", ("gains/"+joint_names_[i]+"/pid/i").c_str());
-					return false;
-				}
 
-				if (!n.getParam("gains/" + joint_names_[i] + "/pid/d", gains_[i]->d_))
-				{
-					ROS_ERROR("Could not find d gain in %s", ("gains/"+joint_names_[i]+"/pid/d").c_str());
+				if (!pids_[i]->init(ros::NodeHandle(n, "gains/"+joint_names_[i]+"/pid")) )
 					return false;
-				}
-
-				
-				gains_[i]->initDynamicReconfig(ros::NodeHandle(n, "gains/"+joint_names_[i]));
 			}
 
 			// command subscriber
@@ -371,7 +256,7 @@ namespace arm_controllers{
 				// 	q_error_int_(i) = i_clamp_min_(i);
 
 				// 
-				tau_cmd_(i) = G_(i) + gains_[i]->p_*q_error_(i) + gains_[i]->i_*q_error_int_(i) + gains_[i]->d_*q_error_dot_(i);
+				tau_cmd_(i) = G_(i) + pids_[i]->p_*q_error_(i) + pids_[i]->i_*q_error_int_(i) + pids_[i]->d_*q_error_dot_(i);
 
 				// effort saturation
 				if (tau_cmd_(i) >= joint_urdfs_[i]->limits->effort)
@@ -448,8 +333,9 @@ namespace arm_controllers{
 		Eigen::VectorXd q_error_, q_error_dot_, q_error_int_;
 
 		// gain
-		std::vector<Gains*> gains_;
-		// Gains gains_[6];
+		// std::vector<Pid*> pids_;
+		typedef boost::shared_ptr<Pid> PidPtr;
+		std::vector< PidPtr > pids_;
 
 		// topic
 		ros::Subscriber command_sub_;
