@@ -18,7 +18,6 @@
 #include <boost/scoped_ptr.hpp>
 
 #include "arm_controllers/ControllerJointState.h"
-#include "pid.h"
 
 #define PI 3.141592
 #define D2R PI/180.0
@@ -134,18 +133,17 @@ namespace arm_controllers{
 
 			q_error_ = Eigen::VectorXd::Zero(n_joints_);
 			q_error_dot_ = Eigen::VectorXd::Zero(n_joints_);
-			q_error_int_ = Eigen::VectorXd::Zero(n_joints_);
 
 			// pids
-			// pids_.resize(n_joints_);
-			
+			pids_.resize(n_joints_);
 			for (size_t i=0; i<n_joints_; i++)
 			{
-				pids_.push_back(PidPtr(new Pid));
-
-
-				if (!pids_[i]->init(ros::NodeHandle(n, "gains/"+joint_names_[i]+"/pid")) )
+				// Load PID Controller using gains set on parameter server
+				if (!pids_[i].init(ros::NodeHandle(n, "gains/" + joint_names_[i] + "/pid")))
+				{
+					ROS_ERROR_STREAM("Failed to load PID parameters from " << joint_names_[i] + "/pid");
 					return false;
+				}
 			}
 
 			// command subscriber
@@ -181,7 +179,6 @@ namespace arm_controllers{
 			{
 				q_(i) = joints_[i].getPosition();
 				qdot_(i) = joints_[i].getVelocity();
-				q_error_int_(i) = 0.0;
 			}
 
 			ROS_INFO("Starting Gravity Compensation Controller");
@@ -248,15 +245,8 @@ namespace arm_controllers{
 			// torque command
 			for(int i=0; i<n_joints_; i++)
 			{
-				// i clamp
-				q_error_int_(i) += q_error_(i)*dt;
-				// if (q_error_int_(i) >= i_clamp_max_(i))
-				// 	q_error_int_(i) = i_clamp_max_(i);
-				// else if (q_error_int_(i) <= i_clamp_min_(i))
-				// 	q_error_int_(i) = i_clamp_min_(i);
-
 				// 
-				tau_cmd_(i) = G_(i) + pids_[i]->p_*q_error_(i) + pids_[i]->i_*q_error_int_(i) + pids_[i]->d_*q_error_dot_(i);
+				tau_cmd_(i) = G_(i) + pids_[i].computeCommand(q_error_(i), q_error_dot_(i), period);
 
 				// effort saturation
 				if (tau_cmd_(i) >= joint_urdfs_[i]->limits->effort)
@@ -330,12 +320,10 @@ namespace arm_controllers{
 		KDL::JntArray q_, qdot_;
 
 		Eigen::VectorXd tau_cmd_;
-		Eigen::VectorXd q_error_, q_error_dot_, q_error_int_;
+		Eigen::VectorXd q_error_, q_error_dot_;
 
 		// gain
-		// std::vector<Pid*> pids_;
-		typedef boost::shared_ptr<Pid> PidPtr;
-		std::vector< PidPtr > pids_;
+		std::vector<control_toolbox::Pid> pids_;       /**< Internal PID controllers. */
 
 		// topic
 		ros::Subscriber command_sub_;
