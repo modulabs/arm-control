@@ -32,27 +32,28 @@ namespace arm_controllers{
 		{
 		public:
 			Gains()
-				//: /*alpha_(0.0), p_(0.0), i_(0.0, d_(0.0) */
+				//: alpha_(0.0)
 			{}
-
-			void setGains(/*double alpha,*/ double p, double i, double d)
+			
+			void set(double alpha)
 			{
-				/*alpha_ = alpha;*/ p_ = p; i_ = i; d_ = d;
+				alpha_ = alpha;
 			}
 
-			void setGains()
+			void get(double& alpha)
 			{
-				
+				alpha = alpha_;
 			}
 
-			void getGains(/*double& alpha,*/ double& p, double& i, double& d)
-			{
-				/*alpha = alpha_; */p = p_; i = i_; d = d_;
-			}
-
-			void initDynamicReconfig(const ros::NodeHandle &node)
+			bool initDynamicReconfig(const ros::NodeHandle &node)
 			{
 				ROS_INFO("Init dynamic reconfig in namespace %s", node.getNamespace().c_str());
+
+				if (!node.getParam("alpha", alpha_))
+				{
+					ROS_ERROR("Could not find p gain in %s", (node.getNamespace()+"/alpha").c_str());
+					return false;
+				}
 
 				// Start dynamic reconfigure server
 				param_reconfig_server_.reset(new DynamicReconfigServer(param_reconfig_mutex_, node));
@@ -64,6 +65,8 @@ namespace arm_controllers{
 				// Set callback
 				param_reconfig_callback_ = boost::bind(&Gains::dynamicReconfigCallback, this, _1, _2);
 				param_reconfig_server_->setCallback(param_reconfig_callback_);
+
+				return true;
 			}
 
 			void updateDynamicReconfig()
@@ -76,7 +79,7 @@ namespace arm_controllers{
 				arm_controllers::PassivityControllerParamsConfig config;
 
 				// Get starting values
-				getGains(/*config.alpha,*/ config.p, config.i, config.d);
+				get(config.alpha);
 
 				updateDynamicReconfig(config);
 			}
@@ -98,18 +101,15 @@ namespace arm_controllers{
 				ROS_DEBUG_STREAM_NAMED("passivity gain","Dynamics reconfigure callback recieved.");
 
 				// Set the gains
-				setGains(/*config.alpha,*/ config.p, config.i, config.d);
+				set(config.alpha);
 			}
 
-			// double alpha_;
-			double p_;
-			double i_;
-			double d_;
+			double alpha_;
 
 		private:
 			// Store the gains in a realtime buffer to allow dynamic reconfigure to update it without
 			// blocking the realtime update loop
-			// realtime_tools::RealtimeBuffer<Gains> gains_buffer_;	// to do: consider real-time thread
+			realtime_tools::RealtimeBuffer<double> gains_buffer_;	// to do: consider real-time thread
 
 			// Dynamics reconfigure
 			bool dynamic_reconfig_initialized_;
@@ -124,14 +124,6 @@ namespace arm_controllers{
 		~PassivityController() 
 		{
 			command_sub_.shutdown();
-			for (int i=0; i<n_joints_; i++)
-			{
-				if (gains_[i] != NULL)
-				{
-					delete gains_[i];
-					gains_[i] = NULL;
-				}
-			}
 		}
 
 		bool init(hardware_interface::EffortJointInterface* hw, ros::NodeHandle &n)
@@ -240,40 +232,22 @@ namespace arm_controllers{
 
 			q_error_.data = Eigen::VectorXd::Zero(n_joints_);
 			q_error_dot_.data = Eigen::VectorXd::Zero(n_joints_);
-			q_error_int_.data = Eigen::VectorXd::Zero(n_joints_);
-
 
 			// gains
-			if (!n.getParam("gains/alpha", alpha_))
+			if (!gains_.initDynamicReconfig(ros::NodeHandle(n, "gains/")) )
 			{
-				ROS_ERROR("Could not find alpha gain in %s", "gains/alpha");
+				ROS_ERROR_STREAM("Failed to load alpha gain parameter from gains");
 				return false;
 			}
 
+			pids_.resize(n_joints_);
 			for (size_t i=0; i<n_joints_; i++)
 			{
-				gains_.push_back(new Gains());
-
-
-				if (!n.getParam("gains/" + joint_names_[i] + "/pid/p", gains_[i]->p_))
+				if(!pids_[i].init(ros::NodeHandle(n, "gains/"+joint_names_[i]+"/pid")))
 				{
-					ROS_ERROR("Could not find p gain in %s", ("gains/"+joint_names_[i]+"/pid/p").c_str());
+					ROS_ERROR_STREAM("Failed to load PID parameters from " << joint_names_[i] + "/pid");
 					return false;
 				}
-
-				if (!n.getParam("gains/" + joint_names_[i] + "/pid/i", gains_[i]->i_))
-				{
-					ROS_ERROR("Could not find i gain in %s", ("gains/"+joint_names_[i]+"/pid/i").c_str());
-					return false;
-				}
-
-				if (!n.getParam("gains/" + joint_names_[i] + "/pid/d", gains_[i]->d_))
-				{
-					ROS_ERROR("Could not find d gain in %s", ("gains/"+joint_names_[i]+"/pid/d").c_str());
-					return false;
-				}
-				
-				gains_[i]->initDynamicReconfig(ros::NodeHandle(n, "gains/"+joint_names_[i]));
 			}
 
 			// command subscriber
@@ -309,7 +283,6 @@ namespace arm_controllers{
 			{
 				q_(i) = joints_[i].getPosition();
 				qdot_(i) = joints_[i].getVelocity();
-				q_error_int_(i) = 0;
 			}
 
 			ROS_INFO("Starting Passivity Based Controller");
@@ -378,17 +351,15 @@ namespace arm_controllers{
 			id_solver_->JntToGravity(q_, G_);
 
 			// torque command
-			qdot_ref_.data = qdot_cmd_.data + alpha_*q_error_.data;
-			qddot_ref_.data = qddot_cmd_.data + alpha_*q_error_dot_.data;
+			qdot_ref_.data = qdot_cmd_.data + gains_.alpha_*q_error_.data;
+			qddot_ref_.data = qddot_cmd_.data + gains_.alpha_*q_error_dot_.data;
 
 			tau_cmd_.data = M_.data * qddot_ref_.data + C_.data + G_.data;
 
 			for(int i=0; i<n_joints_; i++)
 			{
-				q_error_int_(i) += q_error_(i)*dt;
-
 				controller_state_pub_->msg_.effort_feedforward[i] = tau_cmd_(i);
-				tau_cmd_(i) += gains_[i]->p_*q_error_(i) + gains_[i]->i_*q_error_int_(i) + gains_[i]->d_*q_error_dot_(i);
+				tau_cmd_(i) += pids_[i].computeCommand(q_error_(i), q_error_dot_(i), period);
 
 				// effort saturation
 				if (tau_cmd_(i) >= joint_urdfs_[i]->limits->effort)
@@ -465,11 +436,11 @@ namespace arm_controllers{
 		KDL::JntArray q_cmd_, qdot_cmd_, qddot_cmd_, q_cmd_old_, qdot_cmd_old_;
 		KDL::JntArray qdot_ref_, qddot_ref_;				// passivity-based control joint reference
 		KDL::JntArray q_, qdot_;
-		KDL::JntArray q_error_, q_error_dot_, q_error_int_;
+		KDL::JntArray q_error_, q_error_dot_;
 
 		// gain
-		double alpha_;
-		std::vector<Gains*> gains_;
+		Gains gains_;										// alpha gain(dynamic reconfigured)
+		std::vector<control_toolbox::Pid> pids_; // Internal PID controllers in ros-control
 
 		// topic
 		ros::Subscriber command_sub_;
