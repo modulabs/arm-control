@@ -18,7 +18,7 @@ elfin:
         elfin_joint2: 
           pid: {p: 100, i: 5, d: 20, i_clamp: 50, antiwindup: true}
         elfin_joint3:
-          pid: {p: 200.0, i: 10, d: 10.0, i_clamp: 50, antiwindup: true}
+          pid: {p: 200.0, i: 10, d: 0.0, i_clamp: 50, antiwindup: true}
         elfin_joint4: 
           pid: {p: 200.0, i: 10, d: 0.0, i_clamp: 50, antiwindup: true}
         elfin_joint5: 
