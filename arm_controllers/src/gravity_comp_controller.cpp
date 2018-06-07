@@ -124,6 +124,7 @@ namespace arm_controllers{
 
 			// command and state
 			tau_cmd_ = Eigen::VectorXd::Zero(n_joints_);
+			tau_fric_ = Eigen::VectorXd::Zero(n_joints_);
 			q_cmd_.data = Eigen::VectorXd::Zero(n_joints_);
 			qdot_cmd_.data = Eigen::VectorXd::Zero(n_joints_);
 			qddot_cmd_.data = Eigen::VectorXd::Zero(n_joints_);
@@ -211,7 +212,7 @@ namespace arm_controllers{
 
 				enforceJointLimits(q_cmd_(i), i);
 				// qdot_cmd_(i) = ( q_cmd_(i) - q_cmd_old )/dt;
-				q_cmd_(i) = 45*D2R*PI/2*cos(PI/2*t);
+				qdot_cmd_(i) = 45*D2R*PI/2*cos(PI/2*t);
 				
 				q_(i) = joints_[i].getPosition();
 				qdot_(i) = joints_[i].getVelocity();
@@ -235,6 +236,9 @@ namespace arm_controllers{
 					q_error_(i) = q_cmd_(i) - q_(i);
 				}
 				q_error_dot_(i) = qdot_cmd_(i) - qdot_(i);
+
+				// friction compensation, to do: implement friction observer
+				tau_fric_(i) = 1*qdot_(i) + 1*KDL::sign(qdot_(i));
 			}
 
 			t += dt;
@@ -246,7 +250,9 @@ namespace arm_controllers{
 			for(int i=0; i<n_joints_; i++)
 			{
 				// 
-				tau_cmd_(i) = G_(i) + pids_[i].computeCommand(q_error_(i), q_error_dot_(i), period);
+				tau_cmd_(i) = G_(i) + tau_fric_(i);
+				controller_state_pub_->msg_.effort_feedforward[i] = tau_cmd_(i);
+				tau_cmd_(i) += pids_[i].computeCommand(q_error_(i), q_error_dot_(i), period);
 
 				// effort saturation
 				if (tau_cmd_(i) >= joint_urdfs_[i]->limits->effort)
@@ -273,7 +279,7 @@ namespace arm_controllers{
 						controller_state_pub_->msg_.error[i] = R2D*q_error_(i);
 						controller_state_pub_->msg_.error_dot[i] = R2D*q_error_dot_(i);
 						controller_state_pub_->msg_.effort_command[i] = tau_cmd_(i);
-						controller_state_pub_->msg_.effort_feedforward[i] = G_(i);
+
 						controller_state_pub_->msg_.effort_feedback[i] = tau_cmd_(i) - G_(i);
 					}
 					controller_state_pub_->unlockAndPublish();
@@ -319,7 +325,7 @@ namespace arm_controllers{
 		KDL::JntArray q_cmd_, qdot_cmd_, qddot_cmd_;
 		KDL::JntArray q_, qdot_;
 
-		Eigen::VectorXd tau_cmd_;
+		Eigen::VectorXd tau_cmd_, tau_fric_;
 		Eigen::VectorXd q_error_, q_error_dot_;
 
 		// gain

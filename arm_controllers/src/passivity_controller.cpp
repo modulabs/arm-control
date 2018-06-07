@@ -256,6 +256,7 @@ namespace arm_controllers{
 
 			// command and state
 			tau_cmd_.data = Eigen::VectorXd::Zero(n_joints_);
+			tau_fric_.data = Eigen::VectorXd::Zero(n_joints_);
 			q_cmd_.data = Eigen::VectorXd::Zero(n_joints_);
 			qdot_cmd_.data = Eigen::VectorXd::Zero(n_joints_);
 			qddot_cmd_.data = Eigen::VectorXd::Zero(n_joints_);
@@ -378,6 +379,9 @@ namespace arm_controllers{
 
 				q_cmd_old_(i) = q_cmd_(i);
 				qdot_cmd_old_(i) = qdot_cmd_(i);
+
+				// friction compensation, to do: implement friction observer
+				tau_fric_(i) = 1*qdot_(i) + 1*KDL::sign(qdot_(i));
 			}
 			
 			t += dt;
@@ -392,7 +396,7 @@ namespace arm_controllers{
 			qdot_ref_.data = qdot_cmd_.data + gains.alpha_*q_error_.data;
 			qddot_ref_.data = qddot_cmd_.data + gains.alpha_*q_error_dot_.data;
 
-			tau_cmd_.data = M_.data * qddot_ref_.data + C_.data + G_.data;
+			tau_cmd_.data = M_.data * qddot_ref_.data + C_.data + G_.data + tau_fric_.data;
 
 			for(int i=0; i<n_joints_; i++)
 			{
@@ -470,7 +474,7 @@ namespace arm_controllers{
 
 		// cmd, state
 		realtime_tools::RealtimeBuffer<std::vector<double> > commands_buffer_;
-		KDL::JntArray tau_cmd_;
+		KDL::JntArray tau_cmd_, tau_fric_;
 		KDL::JntArray q_cmd_, qdot_cmd_, qddot_cmd_, q_cmd_old_, qdot_cmd_old_;
 		KDL::JntArray qdot_ref_, qddot_ref_;				// passivity-based control joint reference
 		KDL::JntArray q_, qdot_;
