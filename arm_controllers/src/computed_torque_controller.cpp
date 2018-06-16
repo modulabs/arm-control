@@ -1,6 +1,9 @@
 // from ros-control meta packages
 #include <controller_interface/controller.h>
 #include <hardware_interface/joint_command_interface.h>
+#include <realtime_tools/realtime_buffer.h>
+#include <realtime_tools/realtime_publisher.h>
+#include <control_toolbox/pid.h>
 
 #include <pluginlib/class_list_macros.h>
 #include <std_msgs/Float64MultiArray.h>
@@ -12,23 +15,30 @@
 #include <kdl/kdl.hpp>
 #include <kdl/chain.hpp>
 #include <kdl_parser/kdl_parser.hpp>
-#include <kdl/chaindynparam.hpp>              // inverse dynamics
+#include <kdl/chaindynparam.hpp> // inverse dynamics
 
 #include <boost/scoped_ptr.hpp>
 #include <boost/lexical_cast.hpp>
+
+#include "arm_controllers/ControllerJointState.h"
 
 #define PI 3.141592
 #define D2R PI / 180.0
 #define R2D 180.0 / PI
 #define SaveDataMax 49
+#define A 45
+#define f 0.5
 
 namespace arm_controllers
 {
-class Computed_Torque_Controller : public controller_interface::Controller<hardware_interface::EffortJointInterface>
+class ComputedTorqueController : public controller_interface::Controller<hardware_interface::EffortJointInterface>
 {
   public:
     bool init(hardware_interface::EffortJointInterface *hw, ros::NodeHandle &n)
     {
+        // ??
+        loop_count_ = 0;
+
         // ********* 1. Get joint name / gain from the parameter server *********
         // 1.1 Joint Name
         if (!n.getParam("joints", joint_names_))
@@ -52,44 +62,14 @@ class Computed_Torque_Controller : public controller_interface::Controller<hardw
             }
         }
 
-        // 1.2 Gain
-        // 1.2.1 Joint Controller
-        Kp_.resize(n_joints_);
-        Kd_.resize(n_joints_);
-        Ki_.resize(n_joints_);
+        // // 1.2 Gain
+        pids_.resize(n_joints_);
 
-        std::vector<double> Kp(n_joints_), Ki(n_joints_), Kd(n_joints_);
         for (size_t i = 0; i < n_joints_; i++)
         {
-            std::string si = boost::lexical_cast<std::string>(i + 1);
-            if (n.getParam("/elfin/computed_torque_controller/gains/elfin_joint" + si + "/pid/p", Kp[i]))
+            if (!pids_[i].init(ros::NodeHandle(n, "gains/" + joint_names_[i] + "/pid")))
             {
-                Kp_(i) = Kp[i];
-            }
-            else
-            {
-                std::cout << "/elfin/computed_torque_controller/gains/elfin_joint" + si + "/pid/p" << std::endl;
-                ROS_ERROR("Cannot find pid/p gain");
-                return false;
-            }
-
-            if (n.getParam("/elfin/computed_torque_controller/gains/elfin_joint" + si + "/pid/i", Ki[i]))
-            {
-                Ki_(i) = Ki[i];
-            }
-            else
-            {
-                ROS_ERROR("Cannot find pid/i gain");
-                return false;
-            }
-
-            if (n.getParam("/elfin/computed_torque_controller/gains/elfin_joint" + si + "/pid/d", Kd[i]))
-            {
-                Kd_(i) = Kd[i];
-            }
-            else
-            {
-                ROS_ERROR("Cannot find pid/d gain");
+                ROS_ERROR_STREAM("Failed to load PID parameters from " << joint_names_[i] + "/pid");
                 return false;
             }
         }
@@ -196,6 +176,11 @@ class Computed_Torque_Controller : public controller_interface::Controller<hardw
         e_dot_.data = Eigen::VectorXd::Zero(n_joints_);
         e_int_.data = Eigen::VectorXd::Zero(n_joints_);
 
+        tau_pid_.data = Eigen::VectorXd::Zero(n_joints_);
+        tau_damping_.data = Eigen::VectorXd::Zero(n_joints_);
+        tau_coulomb_.data = Eigen::VectorXd::Zero(n_joints_);
+        tau_friction_.data = Eigen::VectorXd::Zero(n_joints_);
+
         // 5.2 Matrix 초기화 (사이즈 정의 및 값 0)
         M_.resize(kdl_chain_.getNrOfJoints());
         C_.resize(kdl_chain_.getNrOfJoints());
@@ -203,11 +188,28 @@ class Computed_Torque_Controller : public controller_interface::Controller<hardw
 
         // ********* 6. ROS 명령어 *********
         // 6.1 publisher
-        pub_qd_ = n.advertise<std_msgs::Float64MultiArray>("qd", 1000);
-        pub_q_ = n.advertise<std_msgs::Float64MultiArray>("q", 1000);
-        pub_e_ = n.advertise<std_msgs::Float64MultiArray>("e", 1000);
 
+        // 6.1.1
         pub_SaveData_ = n.advertise<std_msgs::Float64MultiArray>("SaveData", 1000); // 뒤에 숫자는?
+
+        // 6.1.2
+        controller_state_pub_.reset(
+            new realtime_tools::RealtimePublisher<arm_controllers::ControllerJointState>(n, "state", 1));
+
+        controller_state_pub_->msg_.header.stamp = ros::Time::now();
+        for (size_t i = 0; i < n_joints_; i++)
+        {
+            controller_state_pub_->msg_.name.push_back(joint_names_[i]);
+            controller_state_pub_->msg_.command.push_back(0.0);
+            controller_state_pub_->msg_.command_dot.push_back(0.0);
+            controller_state_pub_->msg_.state.push_back(0.0);
+            controller_state_pub_->msg_.state_dot.push_back(0.0);
+            controller_state_pub_->msg_.error.push_back(0.0);
+            controller_state_pub_->msg_.error_dot.push_back(0.0);
+            controller_state_pub_->msg_.effort_command.push_back(0.0);
+            controller_state_pub_->msg_.effort_feedforward.push_back(0.0);
+            controller_state_pub_->msg_.effort_feedback.push_back(0.0);
+        }
 
         // 6.2 subsriber
 
@@ -247,9 +249,9 @@ class Computed_Torque_Controller : public controller_interface::Controller<hardw
 
         for (size_t i = 0; i < n_joints_; i++)
         {
-            qd_ddot_(i) = -M_PI * M_PI * 10 * KDL::deg2rad * sin(M_PI * t); 
-            qd_dot_(i) = M_PI * 10 * KDL::deg2rad * cos(M_PI * t);          
-            qd_(i) = 10 * KDL::deg2rad * sin(M_PI * t);
+            qd_ddot_(i) = -(2 * f * M_PI) * (2 * f * M_PI) * A * KDL::deg2rad * sin(2 * f * M_PI * t);
+            qd_dot_(i) = (2 * f * M_PI) * A * KDL::deg2rad * cos(2 * f * M_PI * t);
+            qd_(i) = A * KDL::deg2rad * sin(2 * f * M_PI * t);
         }
 
         // ********* 2. Motion Controller in Joint Space*********
@@ -261,12 +263,31 @@ class Computed_Torque_Controller : public controller_interface::Controller<hardw
         // *** 2.2 Compute model(M,C,G) ***
         id_solver_->JntToMass(q_, M_);
         id_solver_->JntToCoriolis(q_, qdot_, C_);
-        id_solver_->JntToGravity(q_, G_); 
+        id_solver_->JntToGravity(q_, G_);
 
-        // *** 2.3 Apply Torque Command to Actuator ***
-        aux_d_.data = M_.data * (qd_ddot_.data + Kp_.data.cwiseProduct(e_.data) + Kd_.data.cwiseProduct(e_dot_.data));
-        comp_d_.data = C_.data + G_.data;
-        tau_d_.data = aux_d_.data + comp_d_.data;
+        // *** 2.3 Computed Friction ***
+        for (size_t i = 0; i < n_joints_; i++)
+        {
+            // ver. 01 (friction o)
+            tau_damping_(i) = 1.0 * qdot_(i);
+            tau_coulomb_(i) = 1.0 * KDL::sign(qdot_(i));
+
+            // // ver. 02 (friction x)
+            // tau_damping_(i) = 0.0;
+            // tau_coulomb_(i) = 0.0;
+        }
+
+        tau_friction_.data = tau_damping_.data + tau_coulomb_.data;
+
+        // *** 2.4 Apply Torque Command to Actuator ***
+        for (size_t i = 0; i < n_joints_; i++)
+        {
+            tau_pid_(i) = pids_[i].computeCommand(e_(i), e_dot_(i), period);
+        }
+
+        aux_.data = M_.data * (qd_ddot_.data + tau_pid_.data);
+        comp_.data = C_.data + G_.data + tau_friction_.data;
+        tau_d_.data = aux_.data + comp_.data;
 
         for (int i = 0; i < n_joints_; i++)
         {
@@ -279,6 +300,42 @@ class Computed_Torque_Controller : public controller_interface::Controller<hardw
 
         // ********* 4. state 출력 *********
         print_state();
+
+        // ********* 5. ROS Publisher *********
+        // 5.1 data for matlab plot and printf
+        // 5.1.1
+        msg_SaveData_.data.clear();
+
+        // 5.1.2
+        for (int i = 0; i < SaveDataMax; i++)
+        {
+            msg_SaveData_.data.push_back(SaveData_[i]);
+        }
+
+        // 5.1.3
+        pub_SaveData_.publish(msg_SaveData_);
+
+        // 5.2 data for rqt_gui
+        if (loop_count_ % 10 == 0) // loop_counts는 머지?
+        {
+            if (controller_state_pub_->trylock())
+            {
+                controller_state_pub_->msg_.header.stamp = time;
+                for (int i = 0; i < n_joints_; i++)
+                {
+                    controller_state_pub_->msg_.command[i] = R2D * qd_(i);
+                    controller_state_pub_->msg_.command_dot[i] = R2D * qd_dot_(i);
+                    controller_state_pub_->msg_.state[i] = R2D * q_(i);
+                    controller_state_pub_->msg_.state_dot[i] = R2D * qdot_(i);
+                    controller_state_pub_->msg_.error[i] = R2D * e_(i);
+                    controller_state_pub_->msg_.error_dot[i] = R2D * e_dot_(i);
+                    controller_state_pub_->msg_.effort_command[i] = tau_d_(i);
+                    controller_state_pub_->msg_.effort_feedforward[i] = comp_(i);
+                    controller_state_pub_->msg_.effort_feedback[i] = aux_(i);
+                }
+                controller_state_pub_->unlockAndPublish();
+            }
+        }
     }
 
     void stopping(const ros::Time &time)
@@ -354,33 +411,6 @@ class Computed_Torque_Controller : public controller_interface::Controller<hardw
         SaveData_[46] = e_int_(3);
         SaveData_[47] = e_int_(4);
         SaveData_[48] = e_int_(5);
-
-        // 2
-        msg_qd_.data.clear();
-        msg_q_.data.clear();
-        msg_e_.data.clear();
-
-        msg_SaveData_.data.clear();
-
-        // 3
-        for (int i = 0; i < n_joints_; i++)
-        {
-            msg_qd_.data.push_back(qd_(i));
-            msg_q_.data.push_back(q_(i));
-            msg_e_.data.push_back(e_(i));
-        }
-
-        for (int i = 0; i < SaveDataMax; i++)
-        {
-            msg_SaveData_.data.push_back(SaveData_[i]);
-        }
-
-        // 4
-        pub_qd_.publish(msg_qd_);
-        pub_q_.publish(msg_q_);
-        pub_e_.publish(msg_e_);
-
-        pub_SaveData_.publish(msg_SaveData_);
     }
 
     void print_state()
@@ -394,12 +424,12 @@ class Computed_Torque_Controller : public controller_interface::Controller<hardw
             printf("\n");
 
             printf("*** Desired State in Joint Space (unit: deg) ***\n");
-            printf("qd_(0): %f, ", qd_(0)*R2D);
-            printf("qd_(1): %f, ", qd_(1)*R2D);
-            printf("qd_(2): %f, ", qd_(2)*R2D);
-            printf("qd_(3): %f, ", qd_(3)*R2D);
-            printf("qd_(4): %f, ", qd_(4)*R2D);
-            printf("qd_(5): %f\n", qd_(5)*R2D);
+            printf("qd_(0): %f, ", qd_(0) * R2D);
+            printf("qd_(1): %f, ", qd_(1) * R2D);
+            printf("qd_(2): %f, ", qd_(2) * R2D);
+            printf("qd_(3): %f, ", qd_(3) * R2D);
+            printf("qd_(4): %f, ", qd_(4) * R2D);
+            printf("qd_(5): %f\n", qd_(5) * R2D);
             printf("\n");
 
             printf("*** Actual State in Joint Space (unit: deg) ***\n");
@@ -411,7 +441,6 @@ class Computed_Torque_Controller : public controller_interface::Controller<hardw
             printf("q_(5): %f\n", q_(5) * R2D);
             printf("\n");
 
-
             printf("*** Joint Space Error (unit: deg)  ***\n");
             printf("%f, ", R2D * e_(0));
             printf("%f, ", R2D * e_(1));
@@ -420,7 +449,6 @@ class Computed_Torque_Controller : public controller_interface::Controller<hardw
             printf("%f, ", R2D * e_(4));
             printf("%f\n", R2D * e_(5));
             printf("\n");
-
 
             count = 0;
         }
@@ -448,7 +476,7 @@ class Computed_Torque_Controller : public controller_interface::Controller<hardw
     KDL::Vector gravity_;
 
     // kdl solver
-    boost::scoped_ptr<KDL::ChainDynParam> id_solver_;                  // Solver To compute the inverse dynamics
+    boost::scoped_ptr<KDL::ChainDynParam> id_solver_; // Solver To compute the inverse dynamics
 
     // Joint Space State
     KDL::JntArray qd_, qd_dot_, qd_ddot_;
@@ -457,23 +485,37 @@ class Computed_Torque_Controller : public controller_interface::Controller<hardw
     KDL::JntArray e_, e_dot_, e_int_;
 
     // Input
-    KDL::JntArray aux_d_;
-    KDL::JntArray comp_d_;
+    KDL::JntArray aux_;
+    KDL::JntArray comp_;
+    KDL::JntArray tau_pid_;
     KDL::JntArray tau_d_;
 
+    // Friction Model
+    KDL::JntArray tau_damping_, tau_coulomb_, tau_friction_;
+
     // gains
-    KDL::JntArray Kp_, Ki_, Kd_;
+    std::vector<control_toolbox::Pid> pids_; // Internal PID controllers in ros-control
 
     // save the data
     double SaveData_[SaveDataMax];
 
     // ros publisher
-    ros::Publisher pub_qd_, pub_q_, pub_e_;
     ros::Publisher pub_SaveData_;
 
     // ros message
-    std_msgs::Float64MultiArray msg_qd_, msg_q_, msg_e_;
     std_msgs::Float64MultiArray msg_SaveData_;
+
+    // 추가 for making rqt_gui plot
+    realtime_tools::RealtimeBuffer<std::vector<double> > commands_buffer_;
+
+    ros::Subscriber command_sub_;
+    boost::scoped_ptr<
+        realtime_tools::RealtimePublisher<
+            arm_controllers::ControllerJointState> >
+        controller_state_pub_;
+
+    int loop_count_;
+
 };
 }; // namespace arm_controllers
-PLUGINLIB_EXPORT_CLASS(arm_controllers::Computed_Torque_Controller, controller_interface::ControllerBase)
+PLUGINLIB_EXPORT_CLASS(arm_controllers::ComputedTorqueController, controller_interface::ControllerBase)

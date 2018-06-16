@@ -4,7 +4,7 @@ elfin:
       publish_rate: 1000
     
     computed_torque_controller_clik:
-      type: arm_controllers/Computed_Torque_Controller_CLIK
+      type: arm_controllers/ComputedTorqueControllerCLIK
       joints:
         - elfin_joint1
         - elfin_joint2
@@ -14,18 +14,31 @@ elfin:
         - elfin_joint6
         
       gains:
+        clik_gains: {K_Regulation: 1.0, K_Tracking: 1.0}
         elfin_joint1: 
-          pid: {p: 100.0, i: 0, d: 20.0}
+          pid: {p: 1000.0, i: 0, d: 63.2}
+          # clik_regulation: {k: 1.0}
+          # clik_tracking: {k: 1.0}
         elfin_joint2: 
-          pid: {p: 100.0, i: 0, d: 20.0}
+          pid: {p: 1000.0, i: 0, d: 63.2}
+          # clik_regulation: {k: 1.0}
+          # clik_tracking: {k: 1.0}
         elfin_joint3: 
-          pid: {p: 100.0, i: 0, d: 20.0}
+          pid: {p: 1000.0, i: 0, d: 63.2}
+          # clik_regulation: {k: 1.0}
+          # clik_tracking: {k: 1.0}
         elfin_joint4: 
-          pid: {p: 100.0, i: 0, d: 20.0}
+          pid: {p: 1000.0, i: 0, d: 63.2}
+          # clik_regulation: {k: 1.0}
+          # clik_tracking: {k: 1.0}
         elfin_joint5: 
-          pid: {p: 100.0, i: 0, d: 20.0}
+          pid: {p: 1000.0, i: 0, d: 63.2}
+          # clik_regulation: {k: 1.0}
+          # clik_tracking: {k: 1.0}
         elfin_joint6: 
-          pid: {p: 100.0, i: 0, d: 20.0}
+          pid: {p: 1000.0, i: 0, d: 63.2}
+          # clik_regulation: {k: 1.0}
+          # clik_tracking: {k: 1.0}
 
       root_link: world
       tip_link: elfin_link6
@@ -36,4 +49,4 @@ elfin:
       ik_mode: 2 # open-loop inverse kinematics using jacobian
                  # closed-loop inverse Kinematics using jacobian
 
-      clik_gain: {K_regulation: 6.0, K_tracking: 1.0}
+      

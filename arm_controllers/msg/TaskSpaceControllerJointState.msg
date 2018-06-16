@@ -1,0 +1,17 @@
+std_msgs/Header header
+string[] name
+float64[] qd
+float64[] qd_dot
+float64[] q
+float64[] q_dot
+float64[] e
+float64[] e_dot
+float64[] xd
+float64[] xd_dot
+float64[] x
+float64[] x_dot
+float64[] ex
+float64[] ex_dot
+float64[] effort_total
+float64[] effort_feedforward
+float64[] effort_feedback

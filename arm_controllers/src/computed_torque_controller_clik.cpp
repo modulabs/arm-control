@@ -1,6 +1,9 @@
 // from ros-control meta packages
 #include <controller_interface/controller.h>
 #include <hardware_interface/joint_command_interface.h>
+#include <realtime_tools/realtime_buffer.h>
+#include <realtime_tools/realtime_publisher.h>
+#include <control_toolbox/pid.h>
 
 #include <pluginlib/class_list_macros.h>
 #include <std_msgs/Float64MultiArray.h>
@@ -26,23 +29,165 @@
 #include <utils/pseudo_inversion.h>
 #include <utils/skew_symmetric.h>
 
+#include "arm_controllers/TaskSpaceControllerJointState.h"
+#include "arm_controllers/ComputedTorqueControllerCLIKParamsConfig.h"
+
 #define PI 3.141592
 #define D2R PI / 180.0
 #define R2D 180.0 / PI
 #define SaveDataMax 97
 #define num_taskspace 6
 #define A 0.1
-#define b 2.5
+#define b -0.218
 #define f 1
-#define t_set 1
+#define t_set 5
 
 namespace arm_controllers
 {
-class Computed_Torque_Controller_CLIK : public controller_interface::Controller<hardware_interface::EffortJointInterface>
+class ComputedTorqueControllerCLIK : public controller_interface::Controller<hardware_interface::EffortJointInterface>
 {
+    class GainsHandler
+    {
+      public:
+        struct Gains
+        {
+            Gains() : K_Regulation_(0.0), K_Tracking_(0.0) {}
+            
+            Gains(double K_Regulation, double K_Tracking) : K_Regulation_(K_Regulation), K_Tracking_(K_Tracking) {}
+
+            double K_Regulation_; // it's only one gain, but  make it structure for unity with the controller having multiple
+            double K_Tracking_;
+        };
+
+        GainsHandler() {}
+
+        bool initDynamicReconfig(const ros::NodeHandle &node)
+        {
+            ROS_INFO("Init dynamic reconfig in namespace %s", node.getNamespace().c_str());
+
+            Gains gains;
+            if (!node.getParam("K_Regulation", gains.K_Regulation_))
+            {
+                ROS_ERROR("Could not find K_Regulation gain in %s", (node.getNamespace() + "/K_Regulation").c_str());
+                return false;
+            }
+
+            if (!node.getParam("K_Tracking", gains.K_Tracking_))
+            {
+                ROS_ERROR("Could not find K_Tracking gain in %s", (node.getNamespace() + "/K_Tracking").c_str());
+                return false;
+            }
+
+            // Start dynamic reconfigure server
+            param_reconfig_server_.reset(new DynamicReconfigServer(param_reconfig_mutex_, node));
+            dynamic_reconfig_initialized_ = true;
+
+            setGains(gains);
+
+            // Set Dynamic Reconfigure's gains to Pid's values
+            updateDynamicReconfig();
+
+            // Set callback
+            param_reconfig_callback_ = boost::bind(&GainsHandler::dynamicReconfigCallback, this, _1, _2);
+            param_reconfig_server_->setCallback(param_reconfig_callback_);
+
+            return true;
+        }
+
+        void getGains(double &K_Regulation, double &K_Tracking)
+        {
+            Gains gains = *gains_buffer_.readFromRT();
+            K_Regulation = gains.K_Regulation_;
+            K_Tracking = gains.K_Tracking_;
+        }
+
+        Gains getGains()
+        {
+            return *gains_buffer_.readFromRT();
+        }
+
+        void setGains(double K_Regulation, double K_Tracking)
+        {
+            Gains gains(K_Regulation, K_Tracking);
+
+            setGains(gains);
+        }
+
+        void setGains(const Gains &gains)
+        {
+            gains_buffer_.writeFromNonRT(gains);
+
+            updateDynamicReconfig(gains);
+        }
+
+        void updateDynamicReconfig()
+        {
+            // Make sure dynamic reconfigure is initialized
+            if (!dynamic_reconfig_initialized_)
+                return;
+
+            // Get starting values
+            ComputedTorqueControllerCLIKParamsConfig config;
+            getGains(config.K_Regulation, config.K_Tracking);
+
+            updateDynamicReconfig(config);
+        }
+
+        void updateDynamicReconfig(Gains gains)
+        {
+            // Make sure dynamic reconfigure is initialized
+            if (!dynamic_reconfig_initialized_)
+                return;
+
+            ComputedTorqueControllerCLIKParamsConfig config;
+
+            // Convert to dynamic reconfigure format
+            config.K_Regulation = gains.K_Regulation_;
+            config.K_Tracking = gains.K_Tracking_;
+
+            updateDynamicReconfig(config);
+        }
+
+        void updateDynamicReconfig(ComputedTorqueControllerCLIKParamsConfig config)
+        {
+            // Make sure dynamic reconfigure is initialized
+            if (!dynamic_reconfig_initialized_)
+                return;
+
+            // Set starting values, using a shared mutex with dynamic reconfig
+            param_reconfig_mutex_.lock();
+            param_reconfig_server_->updateConfig(config);
+            param_reconfig_mutex_.unlock();
+        }
+
+        void dynamicReconfigCallback(ComputedTorqueControllerCLIKParamsConfig &config, uint32_t /*level*/)
+        {
+            ROS_DEBUG_STREAM_NAMED("CLIK gain", "Dynamics reconfigure callback recieved.");
+
+            // Set the gains
+            setGains(config.K_Regulation, config.K_Tracking);
+        }
+
+      private:
+        // Store the gains in a realtime buffer to allow dynamic reconfigure to update it without
+        // blocking the realtime update loop
+        realtime_tools::RealtimeBuffer<Gains> gains_buffer_;
+
+        // Dynamics reconfigure
+        bool dynamic_reconfig_initialized_;
+        typedef dynamic_reconfigure::Server<arm_controllers::ComputedTorqueControllerCLIKParamsConfig> DynamicReconfigServer;
+        boost::shared_ptr<DynamicReconfigServer> param_reconfig_server_;
+        DynamicReconfigServer::CallbackType param_reconfig_callback_;
+
+        boost::recursive_mutex param_reconfig_mutex_;
+    };
+
   public:
     bool init(hardware_interface::EffortJointInterface *hw, ros::NodeHandle &n)
     {
+        // 추가 이건 뭐지?
+        loop_count_ = 0;
+
         // ********* 1. Get joint name / gain from the parameter server *********
         // 1.0 Control objective & Inverse Kinematics mode
         if (!n.getParam("ctr_obj", ctr_obj_))
@@ -80,66 +225,24 @@ class Computed_Torque_Controller_CLIK : public controller_interface::Controller<
         }
 
         // 1.2 Gain
-        // 1.2.1 Joint Controller
-        Kp_.resize(n_joints_);
-        Kd_.resize(n_joints_);
-        Ki_.resize(n_joints_);
-
-        std::vector<double> Kp(n_joints_), Ki(n_joints_), Kd(n_joints_);
+        // 1.2.1 PID Gains
+        pids_.resize(n_joints_);
 
         for (size_t i = 0; i < n_joints_; i++)
         {
-            std::string si = boost::lexical_cast<std::string>(i + 1);
-            if (n.getParam("/elfin/computed_torque_controller_clik/gains/elfin_joint" + si + "/pid/p", Kp[i]))
+            if (!pids_[i].init(ros::NodeHandle(n, "gains/" + joint_names_[i] + "/pid")))
             {
-                Kp_(i) = Kp[i];
-            }
-            else
-            {
-                std::cout << "/elfin/computed_torque_controller_clik/gains/elfin_joint" + si + "/pid/p" << std::endl;
-                ROS_ERROR("Cannot find pid/p gain");
-                return false;
-            }
-
-            if (n.getParam("/elfin/computed_torque_controller_clik/gains/elfin_joint" + si + "/pid/i", Ki[i]))
-            {
-                Ki_(i) = Ki[i];
-            }
-            else
-            {
-                ROS_ERROR("Cannot find pid/i gain");
-                return false;
-            }
-
-            if (n.getParam("/elfin/computed_torque_controller_clik/gains/elfin_joint" + si + "/pid/d", Kd[i]))
-            {
-                Kd_(i) = Kd[i];
-            }
-            else
-            {
-                ROS_ERROR("Cannot find pid/d gain");
+                ROS_ERROR_STREAM("Failed to load PID parameters from " << joint_names_[i] + "/pid");
                 return false;
             }
         }
 
-        // 1.2.2 Closed-loop Inverse Kinematics Controller
-        if (ctr_obj_ == 1)
-        {
-            if (!n.getParam("/elfin/computed_torque_controller_clik/clik_gain/K_regulation", K_regulation_))
-            {
-                ROS_ERROR("Cannot find clik regulation gain");
-                return false;
-            }
-        }
-
-        else if (ctr_obj_ == 2)
-        {
-            if (!n.getParam("/elfin/computed_torque_controller_clik/clik_gain/K_tracking", K_tracking_))
-            {
-                ROS_ERROR("Cannot find clik tracking gain");
-                return false;
-            }
-        }
+        // 1.2.2 Closed-loop Inverse Kinematics Gains
+		if (!gains_handler_.initDynamicReconfig(ros::NodeHandle(n, "gains/clik_gains")) )
+		{
+			ROS_ERROR_STREAM("Failed to load K_Regulation gain parameter from gains");
+			return false;
+		}
 
         // 2. ********* urdf *********
         urdf::Model urdf;
@@ -236,6 +339,7 @@ class Computed_Torque_Controller_CLIK : public controller_interface::Controller<
 
         // 5.1 KDL Vector 초기화 (사이즈 정의 및 값 0)
         tau_d_.data = Eigen::VectorXd::Zero(n_joints_);
+        tau_pid_.data = Eigen::VectorXd::Zero(n_joints_);
         x_cmd_.data = Eigen::VectorXd::Zero(num_taskspace);
 
         qd_.data = Eigen::VectorXd::Zero(n_joints_);
@@ -248,31 +352,50 @@ class Computed_Torque_Controller_CLIK : public controller_interface::Controller<
 
         e_.data = Eigen::VectorXd::Zero(n_joints_);
         e_dot_.data = Eigen::VectorXd::Zero(n_joints_);
-        e_int_.data = Eigen::VectorXd::Zero(n_joints_);
-
-
 
         // 5.2 KDL Matrix 초기화 (사이즈 정의 및 값 0)
         J_.resize(kdl_chain_.getNrOfJoints());
+        Ja_.resize(kdl_chain_.getNrOfJoints()); // 6x6 or 6x7?
+
         // J_inv_.resize(kdl_chain_.getNrOfJoints());
         M_.resize(kdl_chain_.getNrOfJoints());
         C_.resize(kdl_chain_.getNrOfJoints());
         G_.resize(kdl_chain_.getNrOfJoints());
 
+        
+
         // ********* 6. ROS 명령어 *********
         // 6.1 publisher
-        pub_qd_ = n.advertise<std_msgs::Float64MultiArray>("qd", 1000);
-        pub_q_ = n.advertise<std_msgs::Float64MultiArray>("q", 1000);
-        pub_e_ = n.advertise<std_msgs::Float64MultiArray>("e", 1000);
-
-        pub_xd_ = n.advertise<std_msgs::Float64MultiArray>("xd", 1000);
-        pub_x_ = n.advertise<std_msgs::Float64MultiArray>("x", 1000);
-        pub_ex_ = n.advertise<std_msgs::Float64MultiArray>("ex", 1000);
-
+        // 6.1.1
         pub_SaveData_ = n.advertise<std_msgs::Float64MultiArray>("SaveData", 1000); // 뒤에 숫자는?
 
+        // 6.1.2
+        controller_state_pub_.reset(
+            new realtime_tools::RealtimePublisher<arm_controllers::TaskSpaceControllerJointState>(n, "state", 1));
+
+        controller_state_pub_->msg_.header.stamp = ros::Time::now();
+        for (size_t i = 0; i < n_joints_; i++)
+        {
+            controller_state_pub_->msg_.name.push_back(joint_names_[i]);
+            controller_state_pub_->msg_.qd.push_back(0.0);
+            controller_state_pub_->msg_.qd_dot.push_back(0.0);
+            controller_state_pub_->msg_.q.push_back(0.0);
+            controller_state_pub_->msg_.q_dot.push_back(0.0);
+            controller_state_pub_->msg_.e.push_back(0.0);
+            controller_state_pub_->msg_.e_dot.push_back(0.0);
+            controller_state_pub_->msg_.xd.push_back(0.0);
+            controller_state_pub_->msg_.xd_dot.push_back(0.0);
+            controller_state_pub_->msg_.x.push_back(0.0);
+            controller_state_pub_->msg_.x_dot.push_back(0.0);
+            controller_state_pub_->msg_.ex.push_back(0.0);
+            controller_state_pub_->msg_.ex_dot.push_back(0.0);
+            controller_state_pub_->msg_.effort_total.push_back(0.0);
+            controller_state_pub_->msg_.effort_feedforward.push_back(0.0);
+            controller_state_pub_->msg_.effort_feedback.push_back(0.0);
+        }
+
         // 6.2 subsriber
-        sub_x_cmd_ = n.subscribe<std_msgs::Float64MultiArray>("command", 1, &Computed_Torque_Controller_CLIK::commandCB, this);
+        sub_x_cmd_ = n.subscribe<std_msgs::Float64MultiArray>("command", 1, &ComputedTorqueControllerCLIK::commandCB, this);
         event = 0; // subscribe 받기 전: 0
                    // subscribe 받은 후: 1
 
@@ -316,8 +439,8 @@ class Computed_Torque_Controller_CLIK : public controller_interface::Controller<
             qdot_(i) = joints_[i].getVelocity();
         }
 
-        // 0.3 end-effector state by Compute forward kinematics (x_,xdot_)
-        fk_pos_solver_->JntToCart(q_, x_);
+        // 0.3 end-effector state by Compute forward kinematics (x_, xdot_)
+        fk_pos_solver_->JntToCart(q_, x_); // position vector (3x1) + rotation matrix (3x3)
         xdot_ = J_.data * qdot_.data;
 
         // ********* 1. Desired Trajectory Generation in task space *********
@@ -329,16 +452,20 @@ class Computed_Torque_Controller_CLIK : public controller_interface::Controller<
             if (event == 0) // initial command
             {
                 xd_.p(0) = 0.0;
-                xd_.p(1) = -0.32;
-                xd_.p(2) = 0.56;
-                xd_.M = KDL::Rotation(KDL::Rotation::RPY(0, 0, 0));
+                xd_.p(1) = 0.0;
+                xd_.p(2) = 0.3;
+                // xd_.M = KDL::Rotation(KDL::Rotation::RPY(0, 0, 0));
+                // xd_.M = KDL::Rotation::RPY(0, 0, 0);
+                xd_.M = KDL::Rotation::EulerZYX(0,0,0);
             }
             else if (event == 1) // command from ros subscriber
             {
                 xd_.p(0) = x_cmd_(0);
                 xd_.p(1) = x_cmd_(1);
                 xd_.p(2) = x_cmd_(2);
-                xd_.M = KDL::Rotation(KDL::Rotation::RPY(x_cmd_(3), x_cmd_(4), x_cmd_(5)));
+                // xd_.M = KDL::Rotation(KDL::Rotation::RPY(x_cmd_(3), x_cmd_(4), x_cmd_(5)));
+                // xd_.M = KDL::Rotation::RPY(x_cmd_(3), x_cmd_(4), x_cmd_(5));
+                xd_.M = KDL::Rotation::EulerZYX(x_cmd_(3), x_cmd_(4), x_cmd_(5));
             }
 
             xd_dot_(0) = 0;
@@ -358,13 +485,17 @@ class Computed_Torque_Controller_CLIK : public controller_interface::Controller<
         else if (ctr_obj_ == 2)
         {
             // (2) Tracking
-            xd_.p(0) = 0.1;
+            xd_.p(0) = 0;
             xd_.p(1) = A * sin(f * M_PI * (t - t_set)) + b;
-            xd_.p(2) = 0.5;
-            xd_.M = KDL::Rotation(KDL::Rotation::RPY(0, 0, 0));
+            xd_.p(2) = 0.4;
+            // xd_.M = KDL::Rotation(KDL::Rotation::RPY(0, 0, 0)); 무슨 차이지?
+            // xd_.M = KDL::Rotation::RPY(0, 0, 0);
+            xd_.M = KDL::Rotation::EulerZYX(0, 0, 0);
+
 
             xd_dot_(0) = 0;
             xd_dot_(1) = (f * M_PI) * A * cos(f * M_PI * (t - t_set));
+            xd_dot_(2) = 0;
             xd_dot_(3) = 0;
             xd_dot_(4) = 0;
             xd_dot_(5) = 0;
@@ -379,27 +510,115 @@ class Computed_Torque_Controller_CLIK : public controller_interface::Controller<
 
         // ********* 2. Inverse Kinematics *********
         // *** 2.0 Error Definition in Task Space ***
-        ex_temp_ = diff(x_, xd_);
 
-        ex_(0) = ex_temp_(0);
-        ex_(1) = ex_temp_(1);
-        ex_(2) = ex_temp_(2);
-        ex_(3) = ex_temp_(3);
-        ex_(4) = ex_temp_(4);
-        ex_(5) = ex_temp_(5);
+        // ***************** 수정중 *****************
+        // // ver. 01: original
+        // ex_temp_ = diff(x_, xd_);
+
+        // ex_(0) = ex_temp_(0);
+        // ex_(1) = ex_temp_(1);
+        // ex_(2) = ex_temp_(2);
+        // ex_(3) = ex_temp_(3);
+        // ex_(4) = ex_temp_(4);
+        // ex_(5) = ex_temp_(5);
+
+        // ver. 02: revise
+        // define position error
+        ex_p_ = xd_.p - x_.p;
+
+        // define orientation error v.01 (rpy)
+        // xd_.M.GetRPY(rd_,pd_,yd_);
+        // x_.M.GetRPY(r_,p_,y_);
+
+        // ex_o_(0) = rd_-r_;
+        // ex_o_(1) = pd_-p_;
+        // ex_o_(2) = yd_-y_;
+
+        // define orientation error v.02 (Euler ZYX)
+        xd_.M.GetEulerZYX(alpha_d_,beta_d_,gamma_d_);
+        x_.M.GetEulerZYX(alpha_,beta_,gamma_);
+
+        ex_o_(0) = alpha_d_ - alpha_;
+        ex_o_(1) = beta_d_ - beta_;
+        ex_o_(2) = gamma_d_ - gamma_;
+
+        // ex_o_(0) = R2D*(alpha_d_ - alpha_);
+        // ex_o_(1) = R2D*(beta_d_ - beta_);
+        // ex_o_(2) = R2D*(gamma_d_ - gamma_);
+
+        // 
+        for (size_t i = 0; i < num_taskspace; i++)
+        {
+            if (i<3)
+            {
+                ex_(i) = ex_p_(i);
+            }
+            else
+            {
+                ex_(i) = ex_o_(i-3);
+            }
+
+        }
 
         ex_dot_ = xd_dot_ - xdot_;
-        // ex_int_ = xd_ - x_; // (To do: e_int 업데이트 필요요)
 
-        // *** 2.1 computing Jacobian J(q) ***
+        // new version //
+
+        // *** 2.1 Computing Analytic Jacobian Ja(q) ***
+        // 2.1.0 Computing Geometric Jacobian J(q) = {Jv;Jw};
+        jnt_to_jac_solver_->JntToJac(q_, J_);
+        
+        Jv_ = J_.data.block(0,0,3,6);
+        Jw_ = J_.data.block(3,0,3,6);
+
+        // 2.1.1 Creating 3x3 rotation matrix for transform geometric jacobian to analytic jacobian from roll, pitch, yaw of current end-effector 
+        // // ver. 01 (rpy)
+        // Eigen::Matrix<double, 3, 3> T_;
+        // T_(0,0) = 0.0;
+        // T_(0,1) = -sin(r_);
+        // T_(0,2) = cos(r_)*cos(p_);
+        // T_(1,0) = 0.0;
+        // T_(1,1) = cos(r_);
+        // T_(1,2) = sin(r_)*cos(p_);
+        // T_(2,0) = 1.0;
+        // T_(2,1) = 0.0;
+        // T_(2,2) = -sin(p_);
+
+        // ver. 02 (Euler ZYX)
+        Eigen::Matrix<double, 3, 3> T_;
+        T_(0,0) = 0.0;
+        T_(0,1) = -sin(alpha_);
+        T_(0,2) = cos(alpha_)*cos(beta_);
+        T_(1,0) = 0.0;
+        T_(1,1) = cos(alpha_);
+        T_(1,2) = sin(alpha_)*cos(beta_);
+        T_(2,0) = 1.0;
+        T_(2,1) = 0.0;
+        T_(2,2) = -sin(beta_);
+
+        // 2.1.2 Computing Analytic Jacobian from Geometic Jacobian
+        Ja_.data.block(0,0,3,6) = Jv_;
+        Ja_.data.block(3,0,3,6) = T_.inverse() * Jw_;
+
+        // *** 2.2 Computing Analytic Jacobian transpose/inversion ***
+        Ja_transpose_ = Ja_.data.transpose();
+        Ja_inv_ = Ja_.data.inverse();
+
+
+        // old version //
+
+
+        // *** 2.1 computing Geometric Jacobian J(q) ***
         jnt_to_jac_solver_->JntToJac(q_, J_);
 
         // *** 2.2 computing Jacobian transpose/inversion ***
         J_transpose_ = J_.data.transpose();
         J_inv_ = J_.data.inverse();
-        // pseudo_inverse(J_.data,J_inv_.data,false);
 
         // *** 2.3 computing desired joint state from Open-loop/Closed-loop Inverse Kinematics ***
+        // 2.3.0 CLIK Gains update from server using dynamic reconfiguration
+        GainsHandler::Gains gains = gains_handler_.getGains();
+
         // 2.3.1 Regulation Case
         if (ctr_obj_ == 1)
         {
@@ -410,7 +629,7 @@ class Computed_Torque_Controller_CLIK : public controller_interface::Controller<
             }
             else
             {
-                qd_.data = qd_old_.data + J_transpose_ * K_regulation_ * ex_ * dt;
+                qd_.data = qd_old_.data + Ja_inv_ * gains.K_Regulation_ * ex_ * dt;
                 qd_old_.data = qd_.data;
             }
         }
@@ -425,12 +644,12 @@ class Computed_Torque_Controller_CLIK : public controller_interface::Controller<
             {
                 if (ik_mode_ == 1) // Open-loop Inverse Kinematics
                 {
-                    qd_.data = qd_old_.data + J_inv_ * xd_dot_ * dt;
+                    qd_.data = qd_old_.data + Ja_inv_ * xd_dot_ * dt;
                     qd_old_.data = qd_.data;
                 }
                 else if (ik_mode_ == 2) // Closed-loop Inverse Kinematics
                 {
-                    qd_.data = qd_old_.data + J_inv_ * (xd_dot_ + K_tracking_ * ex_) * dt;
+                    qd_.data = qd_old_.data + Ja_inv_ * (xd_dot_ + gains.K_Tracking_* ex_) * dt;
                     qd_old_.data = qd_.data;
                 }
             }
@@ -440,7 +659,6 @@ class Computed_Torque_Controller_CLIK : public controller_interface::Controller<
         // *** 3.1 Error Definition in Joint Space ***
         e_.data = qd_.data - q_.data;
         e_dot_.data = qd_dot_.data - qdot_.data;
-        e_int_.data = qd_.data - q_.data; // (To do: e_int 업데이트 필요요)
 
         // *** 3.2 Compute model(M,C,G) ***
         id_solver_->JntToMass(q_, M_);
@@ -448,9 +666,14 @@ class Computed_Torque_Controller_CLIK : public controller_interface::Controller<
         id_solver_->JntToGravity(q_, G_); // output은 머지? , id_solver는 어디에서?
 
         // *** 3.3 Apply Torque Command to Actuator ***
-        aux_d_.data = M_.data * (qd_ddot_.data + Kp_.data.cwiseProduct(e_.data) + Kd_.data.cwiseProduct(e_dot_.data));
-        comp_d_.data = C_.data + G_.data;
-        tau_d_.data = aux_d_.data + comp_d_.data;
+        for (size_t i = 0; i < n_joints_; i++)
+        {
+            tau_pid_(i) = pids_[i].computeCommand(e_(i), e_dot_(i), period);
+        }
+
+        aux_.data = M_.data * (qd_ddot_.data + tau_pid_.data);
+        comp_.data = C_.data + G_.data;
+        tau_d_.data = aux_.data + comp_.data;
 
         for (int i = 0; i < n_joints_; i++)
         {
@@ -463,6 +686,82 @@ class Computed_Torque_Controller_CLIK : public controller_interface::Controller<
 
         // ********* 5. state 출력 *********
         print_state();
+
+        // ********* 6. ROS Publisher *********
+        // 6.1 data for matlab plot and printf
+        // 6.1.1
+        msg_SaveData_.data.clear();
+
+        // 6.1.2
+        for (int i = 0; i < SaveDataMax; i++)
+        {
+            msg_SaveData_.data.push_back(SaveData_[i]);
+        }
+
+        // 6.1.3
+        pub_SaveData_.publish(msg_SaveData_);
+
+        // 6.2 data for rqt_gui
+        if (loop_count_ % 10 == 0) // loop_counts는 머지?
+        {
+            if (controller_state_pub_->trylock())
+            {
+                controller_state_pub_->msg_.header.stamp = time;
+                for (int i = 0; i < n_joints_; i++)
+                {
+                    controller_state_pub_->msg_.qd[i] = R2D * qd_(i);
+                    controller_state_pub_->msg_.qd_dot[i] = R2D * qd_dot_(i);
+                    controller_state_pub_->msg_.q[i] = R2D * q_(i);
+                    controller_state_pub_->msg_.q_dot[i] = R2D * qdot_(i);
+                    controller_state_pub_->msg_.e[i] = R2D * e_(i);
+                    controller_state_pub_->msg_.e_dot[i] = R2D * e_dot_(i);
+                }
+
+
+                // To do # 1
+
+                // Position of End-effector (unit: mm, mm/s) // velocity update 해야함
+                for (int i = 0; i < 3; i++)
+                {
+                    controller_state_pub_->msg_.xd[i] = 1000 * xd_.p(i);
+                    controller_state_pub_->msg_.xd_dot[i] = 1000 * xd_dot_(i);
+                    controller_state_pub_->msg_.x[i] = 1000 * x_.p(i);
+                    controller_state_pub_->msg_.x_dot[i] = 1000 * xdot_(i);
+                    controller_state_pub_->msg_.ex[i] = 1000 * ex_(i);
+                    controller_state_pub_->msg_.ex_dot[i] = 1000 * ex_dot_(i);
+                }
+
+                // Orientation of End-effector (unit: deg, deg/s) // 모두 업데이트 해야함
+                for (int i = 3; i < 6; i++)
+                {
+                    controller_state_pub_->msg_.xd[i] = 0.0;
+                    controller_state_pub_->msg_.xd_dot[i] = 0.0;
+                    controller_state_pub_->msg_.x[i] = 0.0;
+                    controller_state_pub_->msg_.x_dot[i] = 0.0;
+                    controller_state_pub_->msg_.ex[i] = 0.0;
+                    controller_state_pub_->msg_.ex_dot[i] = 0.0;
+                }
+                // for (int i = 3; i < 6; i++)
+                // {
+                //     controller_state_pub_->msg_.xd[i] = R2D * xd_(i);
+                //     controller_state_pub_->msg_.xd_dot[i] = R2D * xd_dot_(i);
+                //     controller_state_pub_->msg_.x[i] = R2D * x_(i);
+                //     controller_state_pub_->msg_.x_dot[i] = R2D * xdot_(i);
+                //     controller_state_pub_->msg_.ex[i] = R2D * ex_(i);
+                //     controller_state_pub_->msg_.ex_dot[i] = R2D * ex_dot_(i);
+                // }
+
+
+                // To do # 1
+                for (int i = 0; i < n_joints_; i++)
+                {
+                    controller_state_pub_->msg_.effort_total[i] = tau_d_(i);
+                    controller_state_pub_->msg_.effort_feedforward[i] = comp_(i);
+                    controller_state_pub_->msg_.effort_feedback[i] = aux_(i);
+                }
+                controller_state_pub_->unlockAndPublish();
+            }
+        }
     }
 
     void stopping(const ros::Time &time)
@@ -531,14 +830,6 @@ class Computed_Torque_Controller_CLIK : public controller_interface::Controller<
         // SaveData_[41] = e_dot_(5);
         // SaveData_[42] = e_dot_(6);
 
-        // // Error intergal value in joint space (unit: rad*sec)
-        // SaveData_[43] = e_int_(0);
-        // SaveData_[44] = e_int_(1);
-        // SaveData_[45] = e_int_(2);
-        // SaveData_[46] = e_int_(3);
-        // SaveData_[47] = e_int_(4);
-        // SaveData_[48] = e_int_(5);
-
         // // Desired position in task space (unit: m)
         // SaveData_[49] = xd_(0);
         // SaveData_[50] = xd_(1);
@@ -602,48 +893,6 @@ class Computed_Torque_Controller_CLIK : public controller_interface::Controller<
         // SaveData_[94] = ex_int_(3);
         // SaveData_[95] = ex_int_(4);
         // SaveData_[96] = ex_int_(5);
-
-        // // 2
-        // msg_qd_.data.clear();
-        // msg_q_.data.clear();
-        // msg_e_.data.clear();
-
-        // msg_xd_.data.clear();
-        // msg_x_.data.clear();
-        // msg_ex_.data.clear();
-
-        // msg_SaveData_.data.clear();
-
-        // // 3
-        // for (int i = 0; i < n_joints_; i++)
-        // {
-        //     msg_qd_.data.push_back(qd_(i));
-        //     msg_q_.data.push_back(q_(i));
-        //     msg_e_.data.push_back(e_(i));
-        // }
-
-        // for (int i = 0; i < num_taskspace; i++)
-        // {
-        //     msg_xd_.data.push_back(xd_(i));
-        //     msg_x_.data.push_back(x_(i));
-        //     msg_ex_.data.push_back(ex_(i));
-        // }
-
-        // for (int i = 0; i < SaveDataMax; i++)
-        // {
-        //     msg_SaveData_.data.push_back(SaveData_[i]);
-        // }
-
-        // // 4
-        // pub_qd_.publish(msg_qd_);
-        // pub_q_.publish(msg_q_);
-        // pub_e_.publish(msg_e_);
-
-        // pub_xd_.publish(msg_xd_);
-        // pub_x_.publish(msg_x_);
-        // pub_ex_.publish(msg_ex_);
-
-        // pub_SaveData_.publish(msg_SaveData_);
     }
 
     void print_state()
@@ -656,7 +905,7 @@ class Computed_Torque_Controller_CLIK : public controller_interface::Controller<
             printf("t = %f\n", t);
             printf("\n");
 
-            printf("*** Command from Subscriber in Task Space (unit: m) ***\n");
+            printf("*** Command from Subscriber in Task Space  ***\n");
             if (event == 0)
             {
                 printf("No Active!!!\n");
@@ -665,43 +914,52 @@ class Computed_Torque_Controller_CLIK : public controller_interface::Controller<
             {
                 printf("Active!!!\n");
             }
-            printf("x_cmd: %f, ", x_cmd_(0));
-            printf("y_cmd: %f, ", x_cmd_(1));
-            printf("z_cmd: %f, ", x_cmd_(2));
-            printf("r_cmd: %f, ", x_cmd_(3));
-            printf("p_cmd: %f, ", x_cmd_(4));
-            printf("y_cmd: %f\n", x_cmd_(5));
-            printf("\n");
+            // printf("x_cmd: %f, ", x_cmd_(0));
+            // printf("y_cmd: %f, ", x_cmd_(1));
+            // printf("z_cmd: %f, ", x_cmd_(2));
+            // printf("r_cmd: %f, ", x_cmd_(3));
+            // printf("p_cmd: %f, ", x_cmd_(4));
+            // printf("y_cmd: %f\n", x_cmd_(5));
+            // printf("\n");
 
-            printf("*** Desired Position in Joint Space (unit: deg) ***\n");
-            printf("qd(1): %f, ", qd_(0) * R2D);
-            printf("qd(2): %f, ", qd_(1) * R2D);
-            printf("qd(3): %f, ", qd_(2) * R2D);
-            printf("qd(4): %f, ", qd_(3) * R2D);
-            printf("qd(5): %f, ", qd_(4) * R2D);
-            printf("qd(6): %f\n", qd_(5) * R2D);
-            printf("\n");
+            // printf("*** Desired Position in Joint Space (unit: deg) ***\n");
+            // printf("qd(1): %f, ", qd_(0) * R2D);
+            // printf("qd(2): %f, ", qd_(1) * R2D);
+            // printf("qd(3): %f, ", qd_(2) * R2D);
+            // printf("qd(4): %f, ", qd_(3) * R2D);
+            // printf("qd(5): %f, ", qd_(4) * R2D);
+            // printf("qd(6): %f\n", qd_(5) * R2D);
+            // printf("\n");
 
-            printf("*** Actual Position in Joint Space (unit: deg) ***\n");
-            printf("q(1): %f, ", q_(0) * R2D);
-            printf("q(2): %f, ", q_(1) * R2D);
-            printf("q(3): %f, ", q_(2) * R2D);
-            printf("q(4): %f, ", q_(3) * R2D);
-            printf("q(5): %f, ", q_(4) * R2D);
-            printf("q(6): %f\n", q_(5) * R2D);
-            printf("\n");
+            // printf("*** Actual Position in Joint Space (unit: deg) ***\n");
+            // printf("q(1): %f, ", q_(0) * R2D);
+            // printf("q(2): %f, ", q_(1) * R2D);
+            // printf("q(3): %f, ", q_(2) * R2D);
+            // printf("q(4): %f, ", q_(3) * R2D);
+            // printf("q(5): %f, ", q_(4) * R2D);
+            // printf("q(6): %f\n", q_(5) * R2D);
+            // printf("\n");
+            //
+            // printf("*** Joint Space Error (unit: deg)  ***\n");
+            // printf("q1: %f, ", R2D * e_(0));
+            // printf("q2: %f, ", R2D * e_(1));
+            // printf("q3: %f, ", R2D * e_(2));
+            // printf("q4: %f, ", R2D * e_(3));
+            // printf("q5: %f, ", R2D * e_(4));
+            // printf("q6: %f\n", R2D * e_(5));
+            // printf("\n");
+            
+            // printf("*** Desired Position in Task Space (unit: mm) ***\n");
+            // printf("xd: %f, ", xd_.p(0) * 1000 );
+            // printf("yd: %f, ", xd_.p(1) * 1000 );
+            // printf("zd: %f\n", xd_.p(2) * 1000 );
+            // printf("\n");
 
-            printf("*** Desired Position in Task Space (unit: m) ***\n");
-            printf("xd: %f, ", xd_.p(0));
-            printf("yd: %f, ", xd_.p(1));
-            printf("zd: %f\n", xd_.p(2));
-            printf("\n");
-
-            printf("*** Actual Position in Task Space (unit: m) ***\n");
-            printf("x: %f, ", x_.p(0));
-            printf("y: %f, ", x_.p(1));
-            printf("z: %f\n", x_.p(2));
-            printf("\n");
+            // printf("*** Actual Position in Task Space (unit: mm) ***\n");
+            // printf("x: %f, ", x_.p(0) * 1000 );
+            // printf("y: %f, ", x_.p(1) * 1000 );
+            // printf("z: %f\n", x_.p(2) * 1000 );
+            // printf("\n");
 
             // printf("*** Desired Orientation in Task Space (unit: ??) ***\n");
             // printf("xd_(0): %f, ", xd_.M(KDL::Rotation::RPY(0));
@@ -715,73 +973,80 @@ class Computed_Torque_Controller_CLIK : public controller_interface::Controller<
             // printf("x_(2): %f\n", x_.M(KDL::Rotation::RPY(2));
             // printf("\n");
 
-            printf("*** Desired Translation Velocity in Task Space (unit: m/s) ***\n");
-            printf("xd_dot: %f, ", xd_dot_(0));
-            printf("yd_dot: %f, ", xd_dot_(1));
-            printf("zd_dot: %f\n", xd_dot_(2));
-            printf("\n");
+            // printf("*** Desired Translation Velocity in Task Space (unit: m/s) ***\n");
+            // printf("xd_dot: %f, ", xd_dot_(0));
+            // printf("yd_dot: %f, ", xd_dot_(1));
+            // printf("zd_dot: %f\n", xd_dot_(2));
+            // printf("\n");
 
-            printf("*** Actual Translation Velocity in Task Space (unit: m/s) ***\n");
-            printf("xdot: %f, ", xdot_(0));
-            printf("ydot: %f  ", xdot_(1));
-            printf("zdot: %f\n", xdot_(2));
-            printf("\n");
+            // printf("*** Actual Translation Velocity in Task Space (unit: m/s) ***\n");
+            // printf("xdot: %f, ", xdot_(0));
+            // printf("ydot: %f  ", xdot_(1));
+            // printf("zdot: %f\n", xdot_(2));
+            // printf("\n");
 
-            printf("*** Desired Angular Velocity in Task Space (unit: rad/s) ***\n");
-            printf("rd_dot: %f, ", xd_dot_(3));
-            printf("pd_dot: %f, ", xd_dot_(4));
-            printf("yd_dot: %f\n", xd_dot_(5));
-            printf("\n");
+            // printf("*** Desired Angular Velocity in Task Space (unit: rad/s) ***\n");
+            // printf("rd_dot: %f, ", xd_dot_(3));
+            // printf("pd_dot: %f, ", xd_dot_(4));
+            // printf("yd_dot: %f\n", xd_dot_(5));
+            // printf("\n");
 
-            printf("*** Actual Angular Velocity in Task Space (unit: rad/s) ***\n");
-            printf("r_dot: %f, ", xdot_(3));
-            printf("p_dot: %f  ", xdot_(4));
-            printf("y_dot: %f\n", xdot_(5));
-            printf("\n");
+            // printf("*** Actual Angular Velocity in Task Space (unit: rad/s) ***\n");
+            // printf("r_dot: %f, ", xdot_(3));
+            // printf("p_dot: %f  ", xdot_(4));
+            // printf("y_dot: %f\n", xdot_(5));
+            // printf("\n");
 
-            printf("*** Desired Rotation Matrix of end-effector ***\n");
-            printf("%f, ",xd_.M(0,0));
-            printf("%f, ",xd_.M(0,1));
-            printf("%f\n",xd_.M(0,2));
-            printf("%f, ",xd_.M(1,0));
-            printf("%f, ",xd_.M(1,1));
-            printf("%f\n",xd_.M(1,2));
-            printf("%f, ",xd_.M(2,0));
-            printf("%f, ",xd_.M(2,1));
-            printf("%f\n",xd_.M(2,2));
-            printf("\n");
+            // printf("*** Desired Rotation Matrix of end-effector ***\n");
+            // printf("%f, ", xd_.M(0, 0));
+            // printf("%f, ", xd_.M(0, 1));
+            // printf("%f\n", xd_.M(0, 2));
+            // printf("%f, ", xd_.M(1, 0));
+            // printf("%f, ", xd_.M(1, 1));
+            // printf("%f\n", xd_.M(1, 2));
+            // printf("%f, ", xd_.M(2, 0));
+            // printf("%f, ", xd_.M(2, 1));
+            // printf("%f\n", xd_.M(2, 2));
+            // printf("\n");
 
-            printf("*** Actual Rotation Matrix of end-effector ***\n");
-            printf("%f, ",x_.M(0,0));
-            printf("%f, ",x_.M(0,1));
-            printf("%f\n",x_.M(0,2));
-            printf("%f, ",x_.M(1,0));
-            printf("%f, ",x_.M(1,1));
-            printf("%f\n",x_.M(1,2));
-            printf("%f, ",x_.M(2,0));
-            printf("%f, ",x_.M(2,1));
-            printf("%f\n",x_.M(2,2));
-            printf("\n");
-
-            printf("*** Joint Space Error (unit: deg)  ***\n");
-            printf("q1: %f, ", R2D * e_(0));
-            printf("q2: %f, ", R2D * e_(1));
-            printf("q3: %f, ", R2D * e_(2));
-            printf("q4: %f, ", R2D * e_(3));
-            printf("q5: %f, ", R2D * e_(4));
-            printf("q6: %f\n", R2D * e_(5));
-            printf("\n");
+            // printf("*** Actual Rotation Matrix of end-effector ***\n");
+            // printf("%f, ", x_.M(0, 0));
+            // printf("%f, ", x_.M(0, 1));
+            // printf("%f\n", x_.M(0, 2));
+            // printf("%f, ", x_.M(1, 0));
+            // printf("%f, ", x_.M(1, 1));
+            // printf("%f\n", x_.M(1, 2));
+            // printf("%f, ", x_.M(2, 0));
+            // printf("%f, ", x_.M(2, 1));
+            // printf("%f\n", x_.M(2, 2));
+            // printf("\n");
 
             printf("*** Task Space Position Error (unit: mm) ***\n");
-            printf("x: %f, ", ex_(0)*1000);
-            printf("y: %f, ", ex_(1)*1000);
-            printf("z: %f\n", ex_(2)*1000);
+            printf("x: %f, ", ex_(0) * 1000);
+            printf("y: %f, ", ex_(1) * 1000);
+            printf("z: %f\n", ex_(2) * 1000);
             printf("\n");
 
-            printf("*** Task Space Orientation Error ?? (unit: deg) ***\n");
-            printf("r: %f, ", ex_(3)*R2D);
-            printf("p: %f, ", ex_(4)*R2D);
-            printf("y: %f\n", ex_(5)*R2D);
+            printf("*** Task Space Orientation Error in terms of RPY (unit: deg) ***\n");
+            printf("r: %f, ", ex_(3) * R2D);
+            printf("p: %f, ", ex_(4) * R2D);
+            printf("y: %f\n", ex_(5) * R2D);
+            printf("\n");
+
+
+            // printf("*** Task Space Position Error Test(unit: ) ***\n");
+            // printf("ex_temp(0): %f, ", ex_temp_(0));
+            // printf("ex_temp(1): %f, ", ex_temp_(1));
+            // printf("ex_temp(2): %f\n, ", ex_temp_(2));
+            // printf("ex_temp(3): %f, ", ex_temp_(3));
+            // printf("ex_temp(4): %f, ", ex_temp_(4));
+            // printf("ex_temp(5): %f\n, ", ex_temp_(5));
+            // printf("ex_temp(6): %f, ", ex_temp_(6));
+            // printf("ex_temp(7): %f, ", ex_temp_(7));
+            // printf("ex_temp(8): %f\n, ", ex_temp_(8));
+            // printf("ex_temp(9): %f, ", ex_temp_(9));
+            // printf("ex_temp(10): %f, ", ex_temp_(10));
+            // printf("ex_temp(11): %f\n, ", ex_temp_(11));
             printf("\n");
 
             count = 0;
@@ -813,11 +1078,15 @@ class Computed_Torque_Controller_CLIK : public controller_interface::Controller<
     KDL::Vector gravity_;
 
     // kdl and Eigen Jacobian
-    KDL::Jacobian J_;
-    // KDL::Jacobian J_inv_;
-    // Eigen::Matrix<double, num_taskspace, num_taskspace> J_inv_;
+    KDL::Jacobian J_;  // Geometric Jacobian
+    Eigen::Matrix<double, 3, num_taskspace> Jv_;
+    Eigen::Matrix<double, 3, num_taskspace> Jw_;
     Eigen::MatrixXd J_inv_;
-    Eigen::Matrix<double, num_taskspace, num_taskspace> J_transpose_;
+    Eigen::MatrixXd J_transpose_;
+
+    KDL::Jacobian Ja_; // Analytic Jacobain
+    Eigen::MatrixXd Ja_inv_;
+    Eigen::MatrixXd Ja_transpose_;
 
     // kdl solver
     boost::scoped_ptr<KDL::ChainFkSolverPos_recursive> fk_pos_solver_; //Solver to compute the forward kinematics (position)
@@ -829,7 +1098,7 @@ class Computed_Torque_Controller_CLIK : public controller_interface::Controller<
     KDL::JntArray qd_, qd_dot_, qd_ddot_;
     KDL::JntArray qd_old_;
     KDL::JntArray q_, qdot_;
-    KDL::JntArray e_, e_dot_, e_int_;
+    KDL::JntArray e_, e_dot_;
 
     // Task Space State
     // ver. 01
@@ -843,6 +1112,14 @@ class Computed_Torque_Controller_CLIK : public controller_interface::Controller<
     Eigen::Matrix<double, num_taskspace, 1> xdot_;
     Eigen::Matrix<double, num_taskspace, 1> ex_dot_, ex_int_;
 
+    // 
+    KDL::Vector ex_p_;
+    KDL::Vector ex_o_;
+    double r_, p_, y_, rd_, pd_, yd_;
+    double alpha_, beta_, gamma_, alpha_d_, beta_d_, gamma_d_;
+
+    // Eigen::Matrix<double, 3, 1> ex_p_, ex_o_;
+
     // ver. 02
     // Eigen::Matrix<double, num_taskspace, 1> xd_, xd_dot_, xd_ddot_;
     // Eigen::Matrix<double, num_taskspace, 1> x_, xdot_;
@@ -853,14 +1130,15 @@ class Computed_Torque_Controller_CLIK : public controller_interface::Controller<
     KDL::JntArray x_cmd_;
 
     // Torque
-    KDL::JntArray aux_d_;
-    KDL::JntArray comp_d_;
+    KDL::JntArray aux_;
+    KDL::JntArray comp_;
+    KDL::JntArray tau_pid_;
     KDL::JntArray tau_d_;
 
     // gains
-    KDL::JntArray Kp_, Ki_, Kd_;
-    double K_regulation_, K_tracking_;
-
+    GainsHandler gains_handler_;		     // K_Regulation gain(dynamic reconfigured)
+    std::vector<control_toolbox::Pid> pids_; // Internal PID controllers in ros-control
+    
     // save the data
     double SaveData_[SaveDataMax];
 
@@ -868,14 +1146,21 @@ class Computed_Torque_Controller_CLIK : public controller_interface::Controller<
     ros::Subscriber sub_x_cmd_;
 
     // ros publisher
-    ros::Publisher pub_qd_, pub_q_, pub_e_;
-    ros::Publisher pub_xd_, pub_x_, pub_ex_;
     ros::Publisher pub_SaveData_;
 
     // ros message
-    std_msgs::Float64MultiArray msg_qd_, msg_q_, msg_e_;
-    std_msgs::Float64MultiArray msg_xd_, msg_x_, msg_ex_;
     std_msgs::Float64MultiArray msg_SaveData_;
+
+    // 추가 for making rqt_gui plot
+    realtime_tools::RealtimeBuffer<std::vector<double> > commands_buffer_;
+
+    ros::Subscriber command_sub_;
+    boost::scoped_ptr<
+        realtime_tools::RealtimePublisher<
+            arm_controllers::TaskSpaceControllerJointState> >
+        controller_state_pub_;
+
+    int loop_count_;
 };
 }; // namespace arm_controllers
-PLUGINLIB_EXPORT_CLASS(arm_controllers::Computed_Torque_Controller_CLIK, controller_interface::ControllerBase)
+PLUGINLIB_EXPORT_CLASS(arm_controllers::ComputedTorqueControllerCLIK, controller_interface::ControllerBase)

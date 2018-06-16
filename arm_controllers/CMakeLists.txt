@@ -15,10 +15,12 @@ find_package(catkin REQUIRED COMPONENTS
 generate_dynamic_reconfigure_options(
   cfg/GravityCompControllerParams.cfg
   cfg/PassivityControllerParams.cfg
+  cfg/ComputedTorqueControllerCLIKParams.cfg
   )
 
 # message
 add_message_files(FILES ControllerJointState.msg)
+add_message_files(FILES TaskSpaceControllerJointState.msg)
 generate_messages(DEPENDENCIES std_msgs)
 
 # include
