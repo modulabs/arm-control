@@ -1,0 +1,24 @@
+joint_state_controller:
+    type: joint_state_controller/JointStateController
+    publish_rate: 1000
+
+computed_torque_controller:
+    type: computed_torque_controller/JointTrajectoryController
+    joints:
+        - elfin_joint1
+        - elfin_joint2
+        - elfin_joint3
+        - elfin_joint4
+        - elfin_joint5
+        - elfin_joint6
+
+    gains:
+        elfin_joint1: {p: 1000.0,  d: 63.2, i: 0, i_clamp: 0}
+        elfin_joint2: {p: 1000.0,  d: 63.2, i: 0, i_clamp: 0}
+        elfin_joint3: {p: 1000.0,  d: 63.2, i: 0, i_clamp: 0}
+        elfin_joint4: {p: 1000.0,  d: 63.2, i: 0, i_clamp: 0}
+        elfin_joint5: {p: 1000.0,  d: 63.2, i: 0, i_clamp: 0}
+        elfin_joint6: {p: 1000.0,  d: 63.2, i: 0, i_clamp: 0}   
+
+    root_link: world
+    tip_link: elfin_link6

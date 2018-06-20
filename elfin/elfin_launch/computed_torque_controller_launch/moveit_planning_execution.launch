@@ -1,0 +1,12 @@
+<launch>
+  
+ <include file="$(find elfin_moveit)/launch/move_group.launch">
+  <arg name="publish_monitored_planning_scene" value="true" />
+ </include>
+
+ <arg name="display" default="true"/>
+ <include file="$(find elfin_moveit)/launch/moveit_rviz.launch" if="$(arg display)">
+   <arg name="config" value="true"/>
+ </include>
+ 
+</launch>

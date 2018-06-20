@@ -1,0 +1,11 @@
+<library path="lib/libarm_controllers">
+
+  <class name="computed_torque_controller/JointTrajectoryController"
+         type="computed_torque_controller::JointTrajectoryController"
+         base_class_type="controller_interface::ControllerBase">
+    <description>
+      computed_torque_controller + moveit
+    </description>
+  </class>
+
+</library>

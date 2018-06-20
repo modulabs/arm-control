@@ -1,0 +1,10 @@
+moveit_setup_assistant_config:
+  URDF:
+    package: elfin_description
+    relative_path: urdf/elfin3.urdf.xacro
+  SRDF:
+    relative_path: config/elfin3.srdf
+  CONFIG:
+    author_name: kyungmin
+    author_email: kyungmin5257@gmail.com
+    generated_timestamp: 1528036105
