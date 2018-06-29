@@ -15,30 +15,33 @@ elfin:
         
       gains:
         clik_gains: {K_Regulation: 1.0, K_Tracking: 1.0}
+
         elfin_joint1: 
           pid: {p: 1000.0, i: 0, d: 63.2}
-          # clik_regulation: {k: 1.0}
-          # clik_tracking: {k: 1.0}
+          clik: {K_Regulation: 100.0, K_Tracking: 10.0}
         elfin_joint2: 
           pid: {p: 1000.0, i: 0, d: 63.2}
-          # clik_regulation: {k: 1.0}
-          # clik_tracking: {k: 1.0}
+          clik: {K_Regulation: 100.0, K_Tracking: 10.0}
         elfin_joint3: 
           pid: {p: 1000.0, i: 0, d: 63.2}
-          # clik_regulation: {k: 1.0}
-          # clik_tracking: {k: 1.0}
+          clik: {K_Regulation: 100.0, K_Tracking: 10.0}
         elfin_joint4: 
           pid: {p: 1000.0, i: 0, d: 63.2}
-          # clik_regulation: {k: 1.0}
-          # clik_tracking: {k: 1.0}
+          clik: {K_Regulation: 5.0, K_Tracking: 5.0}
         elfin_joint5: 
           pid: {p: 1000.0, i: 0, d: 63.2}
-          # clik_regulation: {k: 1.0}
-          # clik_tracking: {k: 1.0}
+          clik: {K_Regulation: 5.0, K_Tracking: 5.0}
         elfin_joint6: 
           pid: {p: 1000.0, i: 0, d: 63.2}
-          # clik_regulation: {k: 1.0}
-          # clik_tracking: {k: 1.0}
+          clik: {K_Regulation: 5.0, K_Tracking: 5.0}
+
+        # end_effector_position_orientation: # orientation: Euler ZYX (z,y,x)
+        #   clik_0: {K_Regulation: 5.0, K_Tracking: 1.0} # x
+        #   clik_1: {K_Regulation: 5.0, K_Tracking: 1.0} # y
+        #   clik_2: {K_Regulation: 5.0, K_Tracking: 1.0} # z
+        #   clik_3: {K_Regulation: 1.0, K_Tracking: 1.0} # z
+        #   clik_4: {K_Regulation: 1.0, K_Tracking: 1.0} # y
+        #   clik_5: {K_Regulation: 1.0, K_Tracking: 1.0} # x
 
       root_link: world
       tip_link: elfin_link6

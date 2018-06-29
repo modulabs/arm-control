@@ -38,7 +38,7 @@
 #define SaveDataMax 97
 #define num_taskspace 6
 #define A 0.1
-#define b -0.218
+#define b -0.3
 #define f 1
 #define t_set 5
 
@@ -55,7 +55,7 @@ class ComputedTorqueControllerCLIK : public controller_interface::Controller<har
             
             Gains(double K_Regulation, double K_Tracking) : K_Regulation_(K_Regulation), K_Tracking_(K_Tracking) {}
 
-            double K_Regulation_; // it's only one gain, but  make it structure for unity with the controller having multiple
+            double K_Regulation_; 
             double K_Tracking_;
         };
 
@@ -66,6 +66,7 @@ class ComputedTorqueControllerCLIK : public controller_interface::Controller<har
             ROS_INFO("Init dynamic reconfig in namespace %s", node.getNamespace().c_str());
 
             Gains gains;
+            
             if (!node.getParam("K_Regulation", gains.K_Regulation_))
             {
                 ROS_ERROR("Could not find K_Regulation gain in %s", (node.getNamespace() + "/K_Regulation").c_str());
@@ -84,7 +85,7 @@ class ComputedTorqueControllerCLIK : public controller_interface::Controller<har
 
             setGains(gains);
 
-            // Set Dynamic Reconfigure's gains to Pid's values
+            // Set Dynamic Reconfigure's gains to clik gains
             updateDynamicReconfig();
 
             // Set callback
@@ -237,12 +238,61 @@ class ComputedTorqueControllerCLIK : public controller_interface::Controller<har
             }
         }
 
-        // 1.2.2 Closed-loop Inverse Kinematics Gains
-		if (!gains_handler_.initDynamicReconfig(ros::NodeHandle(n, "gains/clik_gains")) )
-		{
-			ROS_ERROR_STREAM("Failed to load K_Regulation gain parameter from gains");
-			return false;
-		}
+        // 1.2.2 Closed-loop Inverse Kinematics Gains (총 3개: Reconfigure 한개, 여러개, 미적용)
+
+        // // *** Dynamic Reconfiguration ver.1: 한개 *** //
+		// if (!gains_handler_.initDynamicReconfig(ros::NodeHandle(n, "gains/clik_gains")) )
+		// {
+		// 	ROS_ERROR_STREAM("Failed to load K_Regulation gain parameter from gains");
+		// 	return false;
+		// }
+        // // *** Dynamic Reconfiguration ver.1: 한개 *** //
+
+
+        // *** Dynamic Reconfiguration ver.2: 여러개  *** //
+        gains_handler_.resize(n_joints_);
+        
+        for (size_t i = 0; i < n_joints_; i++)
+        {
+            // if (!gains_handler_[i].initDynamicReconfig(ros::NodeHandle(n, "gains/" + joint_names_[i] + "/clik")) )
+            if (!gains_handler_[i]->initDynamicReconfig(ros::NodeHandle(n, "gains/" + joint_names_[i] + "/clik/")) )
+		    {
+			    ROS_ERROR_STREAM("Failed to load clik gain parameter from " << joint_names_[i] + "/clik");
+			    return false;
+		    }
+        }
+        // *** Dynamic Reconfiguration ver.2: 여러개  *** //
+
+        // // *** no dynamic reconfiguration  *** //
+        // K_reg_.resize(n_joints_);
+        // K_track_.resize(n_joints_);
+
+        // std::vector<double> K_reg(n_joints_), K_track(n_joints_);
+
+        // for (size_t i=0; i<n_joints_; i++)
+		// {
+		// 	if (n.getParam("gains/" + joint_names_[i] + "/clik/K_Regulation",K_reg[i] ))
+        //     {
+        //         K_reg_(i) = K_reg[i];
+        //     }
+        //     else
+		// 	{
+		// 		ROS_ERROR("Could not find p gain in %s", ("gains/"+joint_names_[i]+"/clik/K_Regulation").c_str());
+		// 		return false;
+		// 	}
+
+		// 	if (n.getParam("gains/" + joint_names_[i] + "/clik/K_Tracking",K_track[i] ))
+        //     {
+        //         K_track_(i) = K_track[i];
+        //     }
+        //     else
+		// 	{
+		// 		ROS_ERROR("Could not find p gain in %s", ("gains/"+joint_names_[i]+"/clik/K_Tracking").c_str());
+		// 		return false;
+		// 	}
+
+		// }
+        // // *** no dynamic reconfiguration *** //
 
         // 2. ********* urdf *********
         urdf::Model urdf;
@@ -453,9 +503,7 @@ class ComputedTorqueControllerCLIK : public controller_interface::Controller<har
             {
                 xd_.p(0) = 0.0;
                 xd_.p(1) = 0.0;
-                xd_.p(2) = 0.3;
-                // xd_.M = KDL::Rotation(KDL::Rotation::RPY(0, 0, 0));
-                // xd_.M = KDL::Rotation::RPY(0, 0, 0);
+                xd_.p(2) = 0.4;
                 xd_.M = KDL::Rotation::EulerZYX(0,0,0);
             }
             else if (event == 1) // command from ros subscriber
@@ -463,9 +511,7 @@ class ComputedTorqueControllerCLIK : public controller_interface::Controller<har
                 xd_.p(0) = x_cmd_(0);
                 xd_.p(1) = x_cmd_(1);
                 xd_.p(2) = x_cmd_(2);
-                // xd_.M = KDL::Rotation(KDL::Rotation::RPY(x_cmd_(3), x_cmd_(4), x_cmd_(5)));
-                // xd_.M = KDL::Rotation::RPY(x_cmd_(3), x_cmd_(4), x_cmd_(5));
-                xd_.M = KDL::Rotation::EulerZYX(x_cmd_(3), x_cmd_(4), x_cmd_(5));
+                xd_.M = KDL::Rotation::EulerZYX(x_cmd_(3), x_cmd_(4), x_cmd_(5)); 
             }
 
             xd_dot_(0) = 0;
@@ -487,9 +533,7 @@ class ComputedTorqueControllerCLIK : public controller_interface::Controller<har
             // (2) Tracking
             xd_.p(0) = 0;
             xd_.p(1) = A * sin(f * M_PI * (t - t_set)) + b;
-            xd_.p(2) = 0.4;
-            // xd_.M = KDL::Rotation(KDL::Rotation::RPY(0, 0, 0)); 무슨 차이지?
-            // xd_.M = KDL::Rotation::RPY(0, 0, 0);
+            xd_.p(2) = 0.3;
             xd_.M = KDL::Rotation::EulerZYX(0, 0, 0);
 
 
@@ -526,25 +570,13 @@ class ComputedTorqueControllerCLIK : public controller_interface::Controller<har
         // define position error
         ex_p_ = xd_.p - x_.p;
 
-        // define orientation error v.01 (rpy)
-        // xd_.M.GetRPY(rd_,pd_,yd_);
-        // x_.M.GetRPY(r_,p_,y_);
-
-        // ex_o_(0) = rd_-r_;
-        // ex_o_(1) = pd_-p_;
-        // ex_o_(2) = yd_-y_;
-
-        // define orientation error v.02 (Euler ZYX)
+        // define orientation error (Euler ZYX = Fixed XYZ)
         xd_.M.GetEulerZYX(alpha_d_,beta_d_,gamma_d_);
         x_.M.GetEulerZYX(alpha_,beta_,gamma_);
 
         ex_o_(0) = alpha_d_ - alpha_;
         ex_o_(1) = beta_d_ - beta_;
-        ex_o_(2) = gamma_d_ - gamma_;
-
-        // ex_o_(0) = R2D*(alpha_d_ - alpha_);
-        // ex_o_(1) = R2D*(beta_d_ - beta_);
-        // ex_o_(2) = R2D*(gamma_d_ - gamma_);
+        ex_o_(2) = gamma_d_ - gamma_; 
 
         // 
         for (size_t i = 0; i < num_taskspace; i++)
@@ -562,7 +594,7 @@ class ComputedTorqueControllerCLIK : public controller_interface::Controller<har
 
         ex_dot_ = xd_dot_ - xdot_;
 
-        // new version //
+        // new version(2.1~2.2) //
 
         // *** 2.1 Computing Analytic Jacobian Ja(q) ***
         // 2.1.0 Computing Geometric Jacobian J(q) = {Jv;Jw};
@@ -572,19 +604,7 @@ class ComputedTorqueControllerCLIK : public controller_interface::Controller<har
         Jw_ = J_.data.block(3,0,3,6);
 
         // 2.1.1 Creating 3x3 rotation matrix for transform geometric jacobian to analytic jacobian from roll, pitch, yaw of current end-effector 
-        // // ver. 01 (rpy)
-        // Eigen::Matrix<double, 3, 3> T_;
-        // T_(0,0) = 0.0;
-        // T_(0,1) = -sin(r_);
-        // T_(0,2) = cos(r_)*cos(p_);
-        // T_(1,0) = 0.0;
-        // T_(1,1) = cos(r_);
-        // T_(1,2) = sin(r_)*cos(p_);
-        // T_(2,0) = 1.0;
-        // T_(2,1) = 0.0;
-        // T_(2,2) = -sin(p_);
-
-        // ver. 02 (Euler ZYX)
+        // Euler ZYX
         Eigen::Matrix<double, 3, 3> T_;
         T_(0,0) = 0.0;
         T_(0,1) = -sin(alpha_);
@@ -605,9 +625,7 @@ class ComputedTorqueControllerCLIK : public controller_interface::Controller<har
         Ja_inv_ = Ja_.data.inverse();
 
 
-        // old version //
-
-
+        // old version(2.1~2.2) //
         // *** 2.1 computing Geometric Jacobian J(q) ***
         jnt_to_jac_solver_->JntToJac(q_, J_);
 
@@ -617,7 +635,29 @@ class ComputedTorqueControllerCLIK : public controller_interface::Controller<har
 
         // *** 2.3 computing desired joint state from Open-loop/Closed-loop Inverse Kinematics ***
         // 2.3.0 CLIK Gains update from server using dynamic reconfiguration
-        GainsHandler::Gains gains = gains_handler_.getGains();
+
+        // // *** Dynamic Reconfiguration ver.1: 한개 *** //
+        // GainsHandler::Gains gains = gains_handler_.getGains();
+        // // *** Dynamic Reconfiguration ver.1: 한개 *** //
+
+        // *** Dynamic Reconfiguration ver.2: 여러개*** //
+        K_reg_.resize(n_joints_);
+        K_track_.resize(n_joints_);
+        std::vector<GainsHandler::Gains> gains;
+        
+        for (size_t i = 0; i < n_joints_; i++)
+        {
+            // gains[i] = gains_handler_[i].getGains();
+            gains[i] = gains_handler_[i]->getGains();
+        }
+
+        for (size_t i = 0; i < n_joints_; i++)
+        {
+            K_reg_(i) = gains[i].K_Regulation_;
+            K_track_(i) = gains[i].K_Tracking_;
+        }
+
+        // *** Dynamic Reconfiguration ver.2: 여러개*** //
 
         // 2.3.1 Regulation Case
         if (ctr_obj_ == 1)
@@ -629,7 +669,14 @@ class ComputedTorqueControllerCLIK : public controller_interface::Controller<har
             }
             else
             {
-                qd_.data = qd_old_.data + Ja_inv_ * gains.K_Regulation_ * ex_ * dt;
+                // // *** Dynamic Reconfiguration ver.1: 한개 *** //
+                // qd_.data = qd_old_.data + Ja_inv_ * gains.K_Regulation_ * ex_ * dt;
+                // // *** Dynamic Reconfiguration ver.1: 한개 *** //
+
+                // *** Dynamic Reconfiguration ver.2: 여러개 *** //
+                qd_.data = qd_old_.data + Ja_transpose_ * K_reg_.data.cwiseProduct(ex_) * dt;
+                // *** Dynamic Reconfiguration ver.2: 여러개 *** //
+
                 qd_old_.data = qd_.data;
             }
         }
@@ -649,7 +696,13 @@ class ComputedTorqueControllerCLIK : public controller_interface::Controller<har
                 }
                 else if (ik_mode_ == 2) // Closed-loop Inverse Kinematics
                 {
-                    qd_.data = qd_old_.data + Ja_inv_ * (xd_dot_ + gains.K_Tracking_* ex_) * dt;
+                    // // *** Dynamic Reconfiguration ver.1: 한개 *** //
+                    // qd_.data = qd_old_.data + Ja_inv_ * (xd_dot_ + gains.K_Tracking_* ex_) * dt;
+                    // // *** Dynamic Reconfiguration ver.1: 한개 *** //
+
+                    // *** Dynamic Reconfiguration ver.2: 여러개 *** //
+                    qd_.data = qd_old_.data + Ja_inv_ * (xd_dot_ + K_track_.data.cwiseProduct(ex_)) * dt;
+                    // *** Dynamic Reconfiguration ver.2: 여러개 *** //
                     qd_old_.data = qd_.data;
                 }
             }
@@ -949,17 +1002,17 @@ class ComputedTorqueControllerCLIK : public controller_interface::Controller<har
             // printf("q6: %f\n", R2D * e_(5));
             // printf("\n");
             
-            // printf("*** Desired Position in Task Space (unit: mm) ***\n");
-            // printf("xd: %f, ", xd_.p(0) * 1000 );
-            // printf("yd: %f, ", xd_.p(1) * 1000 );
-            // printf("zd: %f\n", xd_.p(2) * 1000 );
-            // printf("\n");
+            printf("*** Desired Position in Task Space (unit: mm) ***\n");
+            printf("xd: %f, ", xd_.p(0) * 1000 );
+            printf("yd: %f, ", xd_.p(1) * 1000 );
+            printf("zd: %f\n", xd_.p(2) * 1000 );
+            printf("\n");
 
-            // printf("*** Actual Position in Task Space (unit: mm) ***\n");
-            // printf("x: %f, ", x_.p(0) * 1000 );
-            // printf("y: %f, ", x_.p(1) * 1000 );
-            // printf("z: %f\n", x_.p(2) * 1000 );
-            // printf("\n");
+            printf("*** Actual Position in Task Space (unit: mm) ***\n");
+            printf("x: %f, ", x_.p(0) * 1000 );
+            printf("y: %f, ", x_.p(1) * 1000 );
+            printf("z: %f\n", x_.p(2) * 1000 );
+            printf("\n");
 
             // printf("*** Desired Orientation in Task Space (unit: ??) ***\n");
             // printf("xd_(0): %f, ", xd_.M(KDL::Rotation::RPY(0));
@@ -1027,10 +1080,10 @@ class ComputedTorqueControllerCLIK : public controller_interface::Controller<har
             printf("z: %f\n", ex_(2) * 1000);
             printf("\n");
 
-            printf("*** Task Space Orientation Error in terms of RPY (unit: deg) ***\n");
-            printf("r: %f, ", ex_(3) * R2D);
-            printf("p: %f, ", ex_(4) * R2D);
-            printf("y: %f\n", ex_(5) * R2D);
+            printf("*** Task Space Orientation Error in terms of Euler ZYX (unit: deg) ***\n");
+            printf("z: %f, ", ex_(3) * R2D);
+            printf("y: %f, ", ex_(4) * R2D);
+            printf("x: %f\n", ex_(5) * R2D);
             printf("\n");
 
 
@@ -1136,8 +1189,18 @@ class ComputedTorqueControllerCLIK : public controller_interface::Controller<har
     KDL::JntArray tau_d_;
 
     // gains
-    GainsHandler gains_handler_;		     // K_Regulation gain(dynamic reconfigured)
     std::vector<control_toolbox::Pid> pids_; // Internal PID controllers in ros-control
+
+    // // *** Dynamic Reconfiguration ver.1: 한개 *** //
+    // GainsHandler gains_handler_;		     // K_Regulation gain(dynamic reconfigured)
+    // // *** Dynamic Reconfiguration ver.1: 한개 *** //
+
+    // *** Dynamic Reconfiguration ver.2: 여러개 *** //
+    // std::vector<GainsHandler> gains_handler_;
+    std::vector<GainsHandler*> gains_handler_;
+    // *** Dynamic Reconfiguration ver.1: 여러개 *** //
+
+    KDL::JntArray K_reg_, K_track_;
     
     // save the data
     double SaveData_[SaveDataMax];
