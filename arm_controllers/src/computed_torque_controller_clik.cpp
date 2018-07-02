@@ -250,10 +250,10 @@ class ComputedTorqueControllerCLIK : public controller_interface::Controller<har
 
 
         // *** Dynamic Reconfiguration ver.2: 여러개  *** //
-        gains_handler_.resize(n_joints_);
-        
         for (size_t i = 0; i < n_joints_; i++)
         {
+            GainsHandlerSharedPtr gains_handler_ptr(new GainsHandler());
+            gains_handler_.push_back(gains_handler_ptr);
             // if (!gains_handler_[i].initDynamicReconfig(ros::NodeHandle(n, "gains/" + joint_names_[i] + "/clik")) )
             if (!gains_handler_[i]->initDynamicReconfig(ros::NodeHandle(n, "gains/" + joint_names_[i] + "/clik/")) )
 		    {
@@ -449,6 +449,8 @@ class ComputedTorqueControllerCLIK : public controller_interface::Controller<har
         event = 0; // subscribe 받기 전: 0
                    // subscribe 받은 후: 1
 
+        ROS_INFO("end of init");
+
         return true;
     }
 
@@ -643,18 +645,19 @@ class ComputedTorqueControllerCLIK : public controller_interface::Controller<har
         // *** Dynamic Reconfiguration ver.2: 여러개*** //
         K_reg_.resize(n_joints_);
         K_track_.resize(n_joints_);
-        std::vector<GainsHandler::Gains> gains;
+        // std::vector<GainsHandler::Gains> gains;
         
-        for (size_t i = 0; i < n_joints_; i++)
-        {
+        // for (size_t i = 0; i < n_joints_; i++)
+        // {
             // gains[i] = gains_handler_[i].getGains();
-            gains[i] = gains_handler_[i]->getGains();
-        }
+            // gains[i] = gains_handler_[i]->getGains();
+        // }
 
         for (size_t i = 0; i < n_joints_; i++)
         {
-            K_reg_(i) = gains[i].K_Regulation_;
-            K_track_(i) = gains[i].K_Tracking_;
+            gains_handler_[i]->getGains(K_reg_(i), K_track_(i));
+            // K_Regulation_;
+            // K_track_(i) = gains[i].K_Tracking_;
         }
 
         // *** Dynamic Reconfiguration ver.2: 여러개*** //
@@ -1197,7 +1200,9 @@ class ComputedTorqueControllerCLIK : public controller_interface::Controller<har
 
     // *** Dynamic Reconfiguration ver.2: 여러개 *** //
     // std::vector<GainsHandler> gains_handler_;
-    std::vector<GainsHandler*> gains_handler_;
+    typedef boost::shared_ptr<GainsHandler> GainsHandlerSharedPtr;
+    std::vector<GainsHandlerSharedPtr > gains_handler_;
+    // std::vector<GainsHandler*> gains_handler_;
     // *** Dynamic Reconfiguration ver.1: 여러개 *** //
 
     KDL::JntArray K_reg_, K_track_;
