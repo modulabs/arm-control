@@ -3,7 +3,7 @@
 
 // Project
 #include <trajectory_interface/quintic_spline_segment.h>
-#include <computed_torque_controller/computed_torque_controller.h>
+#include <computed_torque_controller.h>
 #include <joint_trajectory_controller/joint_trajectory_controller.h>
 
 namespace computed_torque_controller
@@ -14,4 +14,3 @@ namespace computed_torque_controller
 }
 
 PLUGINLIB_EXPORT_CLASS(computed_torque_controller::JointTrajectoryController,   controller_interface::ControllerBase)
-

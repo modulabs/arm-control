@@ -1,4 +1,4 @@
-<library path="lib/libarm_controllers">
+<library path="lib/libcomputed_torque_controller">
 
   <class name="computed_torque_controller/JointTrajectoryController"
          type="computed_torque_controller::JointTrajectoryController"

@@ -1,6 +1,6 @@
 <package format="2">
-  <name>arm_controllers</name>
-  <description>Robot Arm Controllers</description>
+  <name>gravity_comp_controller</name>
+  <description>gravity_comp_controller</description>
   <version>0.13.2</version>
 
   <maintainer email="kyungmin5257@gmail.com">kyungmin</maintainer>

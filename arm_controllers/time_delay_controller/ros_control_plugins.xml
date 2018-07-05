@@ -1,0 +1,11 @@
+<library path="lib/libtime_delay_controller">
+
+  <class name="time_delay_controller/JointTrajectoryController"
+         type="time_delay_controller::JointTrajectoryController"
+         base_class_type="controller_interface::ControllerBase">
+    <description>
+      time_delay_controller + moveit
+    </description>
+  </class>
+
+</library>

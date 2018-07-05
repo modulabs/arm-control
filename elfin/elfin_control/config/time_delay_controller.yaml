@@ -1,0 +1,26 @@
+joint_state_controller:
+    type: joint_state_controller/JointStateController
+    publish_rate: 1000
+
+time_delay_controller:
+    type: time_delay_controller/JointTrajectoryController
+    joints:
+        - elfin_joint1
+        - elfin_joint2
+        - elfin_joint3
+        - elfin_joint4
+        - elfin_joint5
+        - elfin_joint6
+         
+    joint1:
+       tdc: {mbar: 0.01, r: 10.0}
+    joint2: 
+       tdc: {mbar: 0.05, r: 10.0}
+    joint3: 
+       tdc: {mbar: 0.005, r: 10.0}     
+    joint4: 
+       tdc: {mbar: 0.0015, r: 10.0}    
+    joint5: 
+       tdc: {mbar: 0.02, r: 10.0}    
+    joint6: 
+       tdc: {mbar: 0.001, r: 10.0}       

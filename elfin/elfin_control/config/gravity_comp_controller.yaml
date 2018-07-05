@@ -1,0 +1,24 @@
+joint_state_controller:
+    type: joint_state_controller/JointStateController
+    publish_rate: 1000
+    
+gravity_comp_controller:
+    type: gravity_comp_controller/JointTrajectoryController
+    joints:
+        - elfin_joint1
+        - elfin_joint2
+        - elfin_joint3
+        - elfin_joint4
+        - elfin_joint5
+        - elfin_joint6
+
+    gains:
+        elfin_joint1: {p: 200.0, i: 10, d: 10.0, i_clamp: 50}
+        elfin_joint2: {p: 100, i: 5, d: 20, i_clamp: 50}
+        elfin_joint3: {p: 200.0, i: 10, d: 0.0, i_clamp: 50}
+        elfin_joint4: {p: 200.0, i: 10, d: 0.0, i_clamp: 50}
+        elfin_joint5: {p: 200.0, i: 10, d: 5.0, i_clamp: 50}
+        elfin_joint6: {p: 200.0, i: 5, d: 5.0, i_clamp: 50}
+
+    root_link: world
+    tip_link: elfin_link6
