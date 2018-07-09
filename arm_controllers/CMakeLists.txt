@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 2.8.3)
-project(time_delay_controller)
+project(arm_controllers)
 
 # Load catkin and all dependencies required for this package
 find_package(catkin
@@ -17,13 +17,13 @@ find_package(catkin
     trajectory_msgs
     geometry_msgs
     kdl_parser
-    dynamic_reconfigure
+    dynamic_reconfigure    
 )
 
 # Dynamics reconfigure
 generate_dynamic_reconfigure_options(
   cfg/TimedelayControllerParams.cfg
-  )
+)
 
 # Declare catkin package
 catkin_package(
@@ -40,15 +40,18 @@ catkin_package(
   trajectory_msgs
   geometry_msgs
   kdl_parser
-  dynamic_reconfigure
+  dynamic_reconfigure  
   INCLUDE_DIRS include
   LIBRARIES ${PROJECT_NAME}
 )
 
 include_directories(include ${Boost_INCLUDE_DIR} ${catkin_INCLUDE_DIRS})
 
-add_library(${PROJECT_NAME} src/time_delay_controller.cpp
+add_library(${PROJECT_NAME} src/Controllers.cpp
+                            include/computed_torque_controller.h
+                            include/gravity_comp_controller.h
                             include/time_delay_controller.h
+                            include/hardware_interface_adapter.h
                             include/joint_trajectory_controller/init_joint_trajectory.h
                             include/joint_trajectory_controller/joint_trajectory_controller.h
                             include/joint_trajectory_controller/joint_trajectory_controller_impl.h

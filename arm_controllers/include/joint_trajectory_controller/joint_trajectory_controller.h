@@ -73,6 +73,7 @@
 
 #include <joint_trajectory_controller/joint_trajectory_segment.h>
 #include <joint_trajectory_controller/init_joint_trajectory.h>
+#include <hardware_interface_adapter.h>
 
 namespace joint_trajectory_controller
 {
@@ -122,7 +123,7 @@ namespace joint_trajectory_controller
  * \p hardware_interface::VelocityJointInterface, and \p hardware_interface::EffortJointInterface are supported 
  * out-of-the-box.
  */
-template <class SegmentImpl, class HardwareInterface>
+template <class SegmentImpl, class HardwareInterface, class ControllerType>
 class JointTrajectoryController : public controller_interface::Controller<HardwareInterface>
 {
 public:
@@ -173,7 +174,7 @@ private:
   typedef realtime_tools::RealtimeBox<TrajectoryPtr> TrajectoryBox;
   typedef typename Segment::Scalar Scalar;
 
-  typedef HardwareInterfaceAdapter<HardwareInterface, typename Segment::State> HwIfaceAdapter;
+  typedef HardwareInterfaceAdapter<HardwareInterface, typename Segment::State, ControllerType> HwIfaceAdapter;
   typedef typename HardwareInterface::ResourceHandleType JointHandle;
 
   bool                      verbose_;            ///< Hard coded verbose flag to help in debugging

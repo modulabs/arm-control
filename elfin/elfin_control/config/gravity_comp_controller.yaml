@@ -3,7 +3,7 @@ joint_state_controller:
     publish_rate: 1000
     
 gravity_comp_controller:
-    type: gravity_comp_controller/JointTrajectoryController
+    type: Controllers/GravityCompController
     joints:
         - elfin_joint1
         - elfin_joint2

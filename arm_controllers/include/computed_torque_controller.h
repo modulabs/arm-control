@@ -1,24 +1,3 @@
-#ifndef JOINT_TRAJECTORY_CONTROLLER_HARDWARE_INTERFACE_ADAPTER_H
-#define JOINT_TRAJECTORY_CONTROLLER_HARDWARE_INTERFACE_ADAPTER_H
-
-#include <cassert>
-#include <string>
-#include <vector>
-
-#include <boost/shared_ptr.hpp>
-#include <boost/scoped_ptr.hpp>
-#include <boost/lexical_cast.hpp>
-
-#include <ros/node_handle.h>
-#include <ros/time.h>
-
-#include <control_toolbox/pid.h>
-#include <hardware_interface/joint_command_interface.h>
-#include <hardware_interface/posvel_command_interface.h>
-#include <hardware_interface/posvelacc_command_interface.h>
-
-#include <urdf/model.h>
-
 // from kdl packages
 #include <kdl/tree.hpp>
 #include <kdl/kdl.hpp>
@@ -26,30 +5,15 @@
 #include <kdl_parser/kdl_parser.hpp>
 #include <kdl/chaindynparam.hpp>
 
-template <class HardwareInterface, class State>
-class HardwareInterfaceAdapter
+namespace Controllers
 {
-public:
-  bool init(std::vector<typename HardwareInterface::ResourceHandleType>& /*joint_handles*/, ros::NodeHandle& /*controller_nh*/)
-  {
-    return false;
-  }
-
-  void starting(const ros::Time& /*time*/) {}
-  void stopping(const ros::Time& /*time*/) {}
-
-  void updateCommand(const ros::Time&     /*time*/,
-                     const ros::Duration& /*period*/,
-                     const State&         /*desired_state*/,
-                     const State&         /*state_error*/) {}
-};
+class computed_torque_controller{};
+}
 
 template <class State>
-class ClosedLoopHardwareInterfaceAdapter
+class ClosedLoopHardwareInterfaceAdapter<State, Controllers::computed_torque_controller>
 {
 public:
-  ClosedLoopHardwareInterfaceAdapter() : joint_handles_ptr_(0) {}
-
   bool init(std::vector<hardware_interface::JointHandle>& joint_handles, ros::NodeHandle& controller_nh)
   {
     joint_handles_ptr_ = &joint_handles;
@@ -211,8 +175,9 @@ public:
       tau_pid_(i) = pids_[i]->computeCommand(state_error.position[i], state_error.velocity[i], period);
     }
 
-    comp_.data = G_.data + tau_friction_.data;
-    tau_d_.data = tau_pid_.data + comp_.data;
+    aux_.data = M_.data * (qd_ddot_.data + tau_pid_.data);
+    comp_.data = C_.data + G_.data + tau_friction_.data;
+    tau_d_.data = aux_.data + comp_.data;
 
     for (size_t i = 0; i < n_joints_; i++)
     {
@@ -252,7 +217,5 @@ private:
 };
 
 template <class State>
-class HardwareInterfaceAdapter<hardware_interface::EffortJointInterface, State> : public ClosedLoopHardwareInterfaceAdapter<State>
+class HardwareInterfaceAdapter<hardware_interface::EffortJointInterface, State, Controllers::computed_torque_controller> : public ClosedLoopHardwareInterfaceAdapter<State, Controllers::computed_torque_controller>
 {};
-
-#endif // header guard

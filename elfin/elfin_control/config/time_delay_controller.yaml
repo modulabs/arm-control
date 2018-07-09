@@ -3,7 +3,7 @@ joint_state_controller:
     publish_rate: 1000
 
 time_delay_controller:
-    type: time_delay_controller/JointTrajectoryController
+    type: Controllers/TimeDelayController
     joints:
         - elfin_joint1
         - elfin_joint2

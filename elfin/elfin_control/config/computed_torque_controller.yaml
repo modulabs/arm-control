@@ -3,7 +3,7 @@ joint_state_controller:
     publish_rate: 1000
 
 computed_torque_controller:
-    type: computed_torque_controller/JointTrajectoryController
+    type: Controllers/ComputedTorqueController
     joints:
         - elfin_joint1
         - elfin_joint2

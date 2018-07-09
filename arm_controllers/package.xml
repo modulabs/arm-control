@@ -1,6 +1,6 @@
 <package format="2">
-  <name>gravity_comp_controller</name>
-  <description>gravity_comp_controller</description>
+  <name>arm_controllers</name>
+  <description>Robot Arm Controllers</description>
   <version>0.13.2</version>
 
   <maintainer email="kyungmin5257@gmail.com">kyungmin</maintainer>
@@ -25,6 +25,7 @@
   <depend>urdf</depend>
   <depend>geometry_msgs</depend>
   <depend>kdl_parser</depend>
+  <depend>dynamic_reconfigure</depend>    
 
   <test_depend>rostest</test_depend>
   <test_depend>controller_manager</test_depend>

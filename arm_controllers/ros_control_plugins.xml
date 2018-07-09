@@ -1,0 +1,27 @@
+<library path="lib/libarm_controllers">
+
+  <class name="Controllers/ComputedTorqueController"
+         type="Controllers::ComputedTorqueController"
+         base_class_type="controller_interface::ControllerBase">
+    <description>
+      ComputedTorqueController + moveit
+    </description>
+  </class>
+
+  <class name="Controllers/GravityCompController"
+         type="Controllers::GravityCompController"
+         base_class_type="controller_interface::ControllerBase">
+    <description>
+      GravityCompController + moveit
+    </description>
+  </class>  
+
+  <class name="Controllers/TimeDelayController"
+         type="Controllers::TimeDelayController"
+         base_class_type="controller_interface::ControllerBase">
+    <description>
+      TimeDelayController + moveit
+    </description>
+  </class>  
+
+</library>

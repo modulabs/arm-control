@@ -1,20 +1,3 @@
-#ifndef JOINT_TRAJECTORY_CONTROLLER_HARDWARE_INTERFACE_ADAPTER_H
-#define JOINT_TRAJECTORY_CONTROLLER_HARDWARE_INTERFACE_ADAPTER_H
-
-#include <cassert>
-#include <string>
-#include <vector>
-
-#include <boost/shared_ptr.hpp>
-
-#include <ros/node_handle.h>
-#include <ros/time.h>
-
-#include <control_toolbox/pid.h>
-#include <hardware_interface/joint_command_interface.h>
-#include <hardware_interface/posvel_command_interface.h>
-#include <hardware_interface/posvelacc_command_interface.h>
-
 #include <kdl/tree.hpp>
 #include <kdl/kdl.hpp>
 #include <kdl/chain.hpp>
@@ -25,7 +8,7 @@
 
 #include <std_msgs/Float64MultiArray.h>
 
-#include "time_delay_controller/TimedelayControllerParamsConfig.h"
+#include "arm_controllers/TimedelayControllerParamsConfig.h"
 
 #define SaveDataMax 8
 #define JointMax 6
@@ -33,26 +16,13 @@
 #define D2R PI/180.0
 #define R2D 180.0/PI
 
-template <class HardwareInterface, class State>
-class HardwareInterfaceAdapter
+namespace Controllers
 {
-public:
-  bool init(std::vector<typename HardwareInterface::ResourceHandleType>& /*joint_handles*/, ros::NodeHandle& /*controller_nh*/)
-  {
-    return false;
-  }
-
-  void starting(const ros::Time& /*time*/) {}
-  void stopping(const ros::Time& /*time*/) {}
-
-  void updateCommand(const ros::Time&     /*time*/,
-                     const ros::Duration& /*period*/,
-                     const State&         /*desired_state*/,
-                     const State&         /*state_error*/) {}
-};
+class time_delay_controller{};
+}
 
 template <class State>
-class ClosedLoopHardwareInterfaceAdapter
+class ClosedLoopHardwareInterfaceAdapter<State, Controllers::time_delay_controller>
 {
   class Gains
   {
@@ -101,7 +71,7 @@ class ClosedLoopHardwareInterfaceAdapter
         return;
 
       // Get starting values
-      time_delay_controller::TimedelayControllerParamsConfig config;
+      arm_controllers::TimedelayControllerParamsConfig config;
 
       // Get starting values
       getGains(config.mbar, config.ramda);
@@ -109,7 +79,7 @@ class ClosedLoopHardwareInterfaceAdapter
       updateDynamicReconfig(config);
     }
 
-    void updateDynamicReconfig(time_delay_controller::TimedelayControllerParamsConfig config)
+    void updateDynamicReconfig(arm_controllers::TimedelayControllerParamsConfig config)
     {
       // Make sure dynamic reconfigure is initialized
       if (!dynamic_reconfig_initialized_)
@@ -121,7 +91,7 @@ class ClosedLoopHardwareInterfaceAdapter
       param_reconfig_mutex_.unlock();
     }
 
-    void dynamicReconfigCallback(time_delay_controller::TimedelayControllerParamsConfig &config, uint32_t /*level*/)
+    void dynamicReconfigCallback(arm_controllers::TimedelayControllerParamsConfig &config, uint32_t /*level*/)
     {
       ROS_DEBUG_STREAM_NAMED("ATDC", "Dynamics reconfigure callback recieved.");
 
@@ -135,7 +105,7 @@ class ClosedLoopHardwareInterfaceAdapter
   private:
     // Dynamics reconfigure
     bool dynamic_reconfig_initialized_;
-    typedef dynamic_reconfigure::Server<time_delay_controller::TimedelayControllerParamsConfig> DynamicReconfigServer;
+    typedef dynamic_reconfigure::Server<arm_controllers::TimedelayControllerParamsConfig> DynamicReconfigServer;
     boost::shared_ptr<DynamicReconfigServer> param_reconfig_server_;
     DynamicReconfigServer::CallbackType param_reconfig_callback_;
 
@@ -442,7 +412,5 @@ private:
 };
 
 template <class State>
-class HardwareInterfaceAdapter<hardware_interface::EffortJointInterface, State> : public ClosedLoopHardwareInterfaceAdapter<State>
+class HardwareInterfaceAdapter<hardware_interface::EffortJointInterface, State, Controllers::time_delay_controller> : public ClosedLoopHardwareInterfaceAdapter<State, Controllers::time_delay_controller>
 {};
-
-#endif // header guard

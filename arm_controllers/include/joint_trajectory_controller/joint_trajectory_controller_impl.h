@@ -31,7 +31,6 @@
 #ifndef JOINT_TRAJECTORY_CONTROLLER_JOINT_TRAJECTORY_CONTROLLER_IMP_H
 #define JOINT_TRAJECTORY_CONTROLLER_JOINT_TRAJECTORY_CONTROLLER_IMP_H
 
-
 namespace joint_trajectory_controller
 {
 
@@ -128,8 +127,8 @@ std::string getLeafNamespace(const ros::NodeHandle& nh)
 
 } // namespace
 
-template <class SegmentImpl, class HardwareInterface>
-inline void JointTrajectoryController<SegmentImpl, HardwareInterface>::
+template <class SegmentImpl, class HardwareInterface, class ControllerType>
+inline void JointTrajectoryController<SegmentImpl, HardwareInterface, ControllerType>::
 starting(const ros::Time& time)
 {
   // Update time data
@@ -148,23 +147,23 @@ starting(const ros::Time& time)
   hw_iface_adapter_.starting(time_data.uptime);
 }
 
-template <class SegmentImpl, class HardwareInterface>
-inline void JointTrajectoryController<SegmentImpl, HardwareInterface>::
+template <class SegmentImpl, class HardwareInterface, class ControllerType>
+inline void JointTrajectoryController<SegmentImpl, HardwareInterface, ControllerType>::
 stopping(const ros::Time& /*time*/)
 {
   preemptActiveGoal();
 }
 
-template <class SegmentImpl, class HardwareInterface>
-inline void JointTrajectoryController<SegmentImpl, HardwareInterface>::
+template <class SegmentImpl, class HardwareInterface, class ControllerType>
+inline void JointTrajectoryController<SegmentImpl, HardwareInterface, ControllerType>::
 trajectoryCommandCB(const JointTrajectoryConstPtr& msg)
 {
   const bool update_ok = updateTrajectoryCommand(msg, RealtimeGoalHandlePtr());
   if (update_ok) {preemptActiveGoal();}
 }
 
-template <class SegmentImpl, class HardwareInterface>
-inline void JointTrajectoryController<SegmentImpl, HardwareInterface>::
+template <class SegmentImpl, class HardwareInterface, class ControllerType>
+inline void JointTrajectoryController<SegmentImpl, HardwareInterface, ControllerType>::
 preemptActiveGoal()
 {
   RealtimeGoalHandlePtr current_active_goal(rt_active_goal_);
@@ -178,8 +177,8 @@ preemptActiveGoal()
   }
 }
 
-template <class SegmentImpl, class HardwareInterface>
-JointTrajectoryController<SegmentImpl, HardwareInterface>::
+template <class SegmentImpl, class HardwareInterface, class ControllerType>
+JointTrajectoryController<SegmentImpl, HardwareInterface, ControllerType>::
 JointTrajectoryController()
   : verbose_(false), // Set to true during debugging
     hold_trajectory_ptr_(new Trajectory)
@@ -195,8 +194,8 @@ JointTrajectoryController()
   }
 }
 
-template <class SegmentImpl, class HardwareInterface>
-bool JointTrajectoryController<SegmentImpl, HardwareInterface>::init(HardwareInterface* hw,
+template <class SegmentImpl, class HardwareInterface, class ControllerType>
+bool JointTrajectoryController<SegmentImpl, HardwareInterface, ControllerType>::init(HardwareInterface* hw,
                                                                      ros::NodeHandle&   root_nh,
                                                                      ros::NodeHandle&   controller_nh)
 {
@@ -343,8 +342,8 @@ bool JointTrajectoryController<SegmentImpl, HardwareInterface>::init(HardwareInt
   return true;
 }
 
-template <class SegmentImpl, class HardwareInterface>
-void JointTrajectoryController<SegmentImpl, HardwareInterface>::
+template <class SegmentImpl, class HardwareInterface, class ControllerType>
+void JointTrajectoryController<SegmentImpl, HardwareInterface, ControllerType>::
 update(const ros::Time& time, const ros::Duration& period)
 {
   // Get currently followed trajectory
@@ -487,8 +486,8 @@ update(const ros::Time& time, const ros::Duration& period)
   publishState(time_data.uptime);
 }
 
-template <class SegmentImpl, class HardwareInterface>
-bool JointTrajectoryController<SegmentImpl, HardwareInterface>::
+template <class SegmentImpl, class HardwareInterface, class ControllerType>
+bool JointTrajectoryController<SegmentImpl, HardwareInterface, ControllerType>::
 updateTrajectoryCommand(const JointTrajectoryConstPtr& msg, RealtimeGoalHandlePtr gh)
 {
   typedef InitJointTrajectoryOptions<Trajectory> Options;
@@ -565,8 +564,8 @@ updateTrajectoryCommand(const JointTrajectoryConstPtr& msg, RealtimeGoalHandlePt
   return true;
 }
 
-template <class SegmentImpl, class HardwareInterface>
-void JointTrajectoryController<SegmentImpl, HardwareInterface>::
+template <class SegmentImpl, class HardwareInterface, class ControllerType>
+void JointTrajectoryController<SegmentImpl, HardwareInterface, ControllerType>::
 goalCB(GoalHandle gh)
 {
   ROS_DEBUG_STREAM_NAMED(name_,"Received new action goal");
@@ -635,8 +634,8 @@ goalCB(GoalHandle gh)
   }
 }
 
-template <class SegmentImpl, class HardwareInterface>
-void JointTrajectoryController<SegmentImpl, HardwareInterface>::
+template <class SegmentImpl, class HardwareInterface, class ControllerType>
+void JointTrajectoryController<SegmentImpl, HardwareInterface, ControllerType>::
 cancelCB(GoalHandle gh)
 {
   RealtimeGoalHandlePtr current_active_goal(rt_active_goal_);
@@ -659,8 +658,8 @@ cancelCB(GoalHandle gh)
   }
 }
 
-template <class SegmentImpl, class HardwareInterface>
-bool JointTrajectoryController<SegmentImpl, HardwareInterface>::
+template <class SegmentImpl, class HardwareInterface, class ControllerType>
+bool JointTrajectoryController<SegmentImpl, HardwareInterface, ControllerType>::
 queryStateService(control_msgs::QueryTrajectoryState::Request&  req,
                   control_msgs::QueryTrajectoryState::Response& resp)
 {
@@ -707,8 +706,8 @@ queryStateService(control_msgs::QueryTrajectoryState::Request&  req,
   return true;
 }
 
-template <class SegmentImpl, class HardwareInterface>
-void JointTrajectoryController<SegmentImpl, HardwareInterface>::
+template <class SegmentImpl, class HardwareInterface, class ControllerType>
+void JointTrajectoryController<SegmentImpl, HardwareInterface, ControllerType>::
 publishState(const ros::Time& time)
 {
   // Check if it's time to publish
@@ -732,8 +731,8 @@ publishState(const ros::Time& time)
   }
 }
 
-template <class SegmentImpl, class HardwareInterface>
-void JointTrajectoryController<SegmentImpl, HardwareInterface>::
+template <class SegmentImpl, class HardwareInterface, class T>
+void JointTrajectoryController<SegmentImpl, HardwareInterface, T>::
 setHoldPosition(const ros::Time& time, RealtimeGoalHandlePtr gh)
 {
   // Settle position in a fixed time. We do the following:
