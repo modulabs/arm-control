@@ -48,7 +48,7 @@ namespace arm_controllers{
 				Gains gains;
 				if (!node.getParam("alpha", gains.alpha_))
 				{
-					ROS_ERROR("Could not find p gain in %s", (node.getNamespace()+"/alpha").c_str());
+					ROS_ERROR("Could not find gain %s", (node.getNamespace()+"/alpha").c_str());
 					return false;
 				}
 
