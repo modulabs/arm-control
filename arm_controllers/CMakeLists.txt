@@ -39,7 +39,7 @@ add_library(${PROJECT_NAME}
   src/time_delay_controller.cpp
   src/gravity_comp_controller.cpp
   src/computed_torque_controller.cpp
-  src/computed_torque_controller_clik.cpp
+  src/computed_torque_clik_controller.cpp
   src/adaptive_variable_impedance_controller.cpp
   src/passivity_controller.cpp
 )

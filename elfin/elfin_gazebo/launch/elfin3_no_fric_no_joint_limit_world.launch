@@ -1,8 +1,23 @@
 <launch>
-
+  <!-- World -->
   <include file="$(find gazebo_ros)/launch/empty_world.launch"/>
   
+  <!-- Robot Model: to check simple control validity, call model with no friction and joint limit -->
   <param name="robot_description" command="$(find xacro)/xacro.py --inorder '$(find elfin_description)/urdf/elfin3_no_fric_no_joint_limit.urdf.xacro'" />
       
   <node name="urdf_spawner" pkg="gazebo_ros" type="spawn_model" respawn="false" output="screen" args="-urdf -model elfin3 -param robot_description"/>
+
+  <!-- Controller: 
+      - gravity_comp_controller
+      - computed_torque_controller
+      - passivity_controller
+      - time_delay_controller
+      - computed_torque_clik_controller -->
+  <rosparam file="$(find elfin_gazebo)/config/$(arg controller).yaml" command="load"/>
+
+  <node name="controller_spawner" pkg="controller_manager" type="spawner" respawn="false"
+      output="screen" ns="/elfin" args="joint_state_controller $(arg controller)"/>
+
+  <!-- State publisher -->
+  <node name="robot_state_publisher" pkg="robot_state_publisher" type="state_publisher" ns="/elfin"/>
 </launch>

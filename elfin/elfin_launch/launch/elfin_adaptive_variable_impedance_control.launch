@@ -1,6 +1,0 @@
-<launch>
-  <include file="$(find elfin_gazebo)/launch/elfin3_experiment2_world.launch"/>
-
-  <include file="$(find elfin_control)/launch/adaptive_impedance_control.launch"/>
-</launch>
-

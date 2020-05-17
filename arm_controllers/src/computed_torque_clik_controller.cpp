@@ -38,7 +38,7 @@
 
 namespace arm_controllers
 {
-class Computed_Torque_Controller_CLIK : public controller_interface::Controller<hardware_interface::EffortJointInterface>
+class Computed_Torque_CLIK_Controller : public controller_interface::Controller<hardware_interface::EffortJointInterface>
 {
   public:
     bool init(hardware_interface::EffortJointInterface *hw, ros::NodeHandle &n)
@@ -90,18 +90,18 @@ class Computed_Torque_Controller_CLIK : public controller_interface::Controller<
         for (size_t i = 0; i < n_joints_; i++)
         {
             std::string si = boost::lexical_cast<std::string>(i + 1);
-            if (n.getParam("/elfin/computed_torque_controller_clik/gains/elfin_joint" + si + "/pid/p", Kp[i]))
+            if (n.getParam("/elfin/computed_torque_clik_controller/gains/elfin_joint" + si + "/pid/p", Kp[i]))
             {
                 Kp_(i) = Kp[i];
             }
             else
             {
-                std::cout << "/elfin/computed_torque_controller_clik/gains/elfin_joint" + si + "/pid/p" << std::endl;
+                std::cout << "/elfin/computed_torque_clik_controller/gains/elfin_joint" + si + "/pid/p" << std::endl;
                 ROS_ERROR("Cannot find pid/p gain");
                 return false;
             }
 
-            if (n.getParam("/elfin/computed_torque_controller_clik/gains/elfin_joint" + si + "/pid/i", Ki[i]))
+            if (n.getParam("/elfin/computed_torque_clik_controller/gains/elfin_joint" + si + "/pid/i", Ki[i]))
             {
                 Ki_(i) = Ki[i];
             }
@@ -111,7 +111,7 @@ class Computed_Torque_Controller_CLIK : public controller_interface::Controller<
                 return false;
             }
 
-            if (n.getParam("/elfin/computed_torque_controller_clik/gains/elfin_joint" + si + "/pid/d", Kd[i]))
+            if (n.getParam("/elfin/computed_torque_clik_controller/gains/elfin_joint" + si + "/pid/d", Kd[i]))
             {
                 Kd_(i) = Kd[i];
             }
@@ -125,7 +125,7 @@ class Computed_Torque_Controller_CLIK : public controller_interface::Controller<
         // 1.2.2 Closed-loop Inverse Kinematics Controller
         if (ctr_obj_ == 1)
         {
-            if (!n.getParam("/elfin/computed_torque_controller_clik/clik_gain/K_regulation", K_regulation_))
+            if (!n.getParam("/elfin/computed_torque_clik_controller/clik_gain/K_regulation", K_regulation_))
             {
                 ROS_ERROR("Cannot find clik regulation gain");
                 return false;
@@ -134,7 +134,7 @@ class Computed_Torque_Controller_CLIK : public controller_interface::Controller<
 
         else if (ctr_obj_ == 2)
         {
-            if (!n.getParam("/elfin/computed_torque_controller_clik/clik_gain/K_tracking", K_tracking_))
+            if (!n.getParam("/elfin/computed_torque_clik_controller/clik_gain/K_tracking", K_tracking_))
             {
                 ROS_ERROR("Cannot find clik tracking gain");
                 return false;
@@ -272,7 +272,7 @@ class Computed_Torque_Controller_CLIK : public controller_interface::Controller<
         pub_SaveData_ = n.advertise<std_msgs::Float64MultiArray>("SaveData", 1000); // 뒤에 숫자는?
 
         // 6.2 subsriber
-        sub_x_cmd_ = n.subscribe<std_msgs::Float64MultiArray>("command", 1, &Computed_Torque_Controller_CLIK::commandCB, this);
+        sub_x_cmd_ = n.subscribe<std_msgs::Float64MultiArray>("command", 1, &Computed_Torque_CLIK_Controller::commandCB, this);
         event = 0; // subscribe 받기 전: 0
                    // subscribe 받은 후: 1
 
@@ -878,4 +878,4 @@ class Computed_Torque_Controller_CLIK : public controller_interface::Controller<
     std_msgs::Float64MultiArray msg_SaveData_;
 };
 }; // namespace arm_controllers
-PLUGINLIB_EXPORT_CLASS(arm_controllers::Computed_Torque_Controller_CLIK, controller_interface::ControllerBase)
+PLUGINLIB_EXPORT_CLASS(arm_controllers::Computed_Torque_CLIK_Controller, controller_interface::ControllerBase)

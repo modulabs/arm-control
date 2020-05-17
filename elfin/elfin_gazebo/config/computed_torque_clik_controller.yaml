@@ -3,8 +3,8 @@ elfin:
       type: joint_state_controller/JointStateController
       publish_rate: 1000
     
-    computed_torque_controller_clik:
-      type: arm_controllers/Computed_Torque_Controller_CLIK
+    computed_torque_clik_controller:
+      type: arm_controllers/Computed_Torque_CLIK_Controller
       joints:
         - elfin_joint1
         - elfin_joint2
