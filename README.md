@@ -10,11 +10,11 @@ Implemented various control algorithm on 6-dof Elfin manipulator simulation usin
 ### Prerequisite
 Install gazebo-ros-pkgs and gazebo-ros-control
 
-    $ sudo apt-get install ros-melodic-gazebo-ros-pkgs ros-melodic-gazebo-ros-control
+    $ sudo apt-get install ros-noetic-gazebo-ros-pkgs ros-noetic-gazebo-ros-control
 
-Install effort-controllers to use torque-control interface
+Install ros-controllers
 
-    $ sudo apt-get install ros-melodic-effort-controllers
+    $ sudo apt-get install ros-noetic-ros-controllers
 
 ### Download and build 
 
@@ -34,6 +34,8 @@ If you want to use motion controller in joint space, then you may choose this co
     $ roslaunch elfin_gazebo elfin3_empty_world.launch controller:=computed_torque_controller
     or
     $ roslaunch elfin_gazebo elfin3_empty_world.launch controller:=computed_torque_clik_controller
+    or
+    $ roslaunch elfin_gazebo elfin3_empty_world.launch controller:=passivity_controller
 
 If you want to use motion controller in task space, then you may choose this controllers as follows:
 
@@ -41,9 +43,9 @@ If you want to use motion controller in task space, then you may choose this con
 
 If you want to use motion and force controller in task space, then you may choose this controllers as follows:
 
-    $ roslaunch elfin_gazebo elfin3_experiment1_world.launch controller:=adaptive_variable_impedance_controller
+    $ roslaunch elfin_gazebo elfin3_experiment1_world.launch controller:=adaptive_impedance_controller
     or
-    $ roslaunch elfin_gazebo elfin3_experiment2_world.launch controller:=adaptive_variable_impedance_controller
+    $ roslaunch elfin_gazebo elfin3_experiment2_world.launch controller:=adaptive_impedance_controller
 
 If you want to plot data in rqt graph, use rqt_plot.launch file. Customize perspective files to plot data you need.
 
