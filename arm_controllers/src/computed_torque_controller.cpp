@@ -17,9 +17,9 @@
 #include <boost/scoped_ptr.hpp>
 #include <boost/lexical_cast.hpp>
 
-#define PI 3.141592
-#define D2R PI / 180.0
-#define R2D 180.0 / PI
+// #define PI 3.141592
+// #define D2R PI / 180.0
+// #define R2D 180.0 / PI
 #define SaveDataMax 49
 
 namespace arm_controllers
@@ -179,7 +179,7 @@ class Computed_Torque_Controller : public controller_interface::Controller<hardw
 
         id_solver_.reset(new KDL::ChainDynParam(kdl_chain_, gravity_));
 
-        // ********* 5. 각종 변수 초기화 *********
+        // ********* 5. 변수 초기화 *********
 
         // 5.1 Vector 초기화 (사이즈 정의 및 값 0)
         tau_d_.data = Eigen::VectorXd::Zero(n_joints_);
@@ -210,6 +210,8 @@ class Computed_Torque_Controller : public controller_interface::Controller<hardw
         pub_SaveData_ = n.advertise<std_msgs::Float64MultiArray>("SaveData", 1000); // 뒤에 숫자는?
 
         // 6.2 subsriber
+
+        ROS_INFO("Computed torque controller initialized.");
 
         return true;
     }
@@ -244,7 +246,6 @@ class Computed_Torque_Controller : public controller_interface::Controller<hardw
         }
 
         // ********* 1. Desired Trajecoty in Joint Space *********
-
         for (size_t i = 0; i < n_joints_; i++)
         {
             qd_ddot_(i) = -M_PI * M_PI / 4 * 45 * KDL::deg2rad * sin(M_PI / 2 * t); 
@@ -342,10 +343,10 @@ class Computed_Torque_Controller : public controller_interface::Controller<hardw
         // Error velocity in joint space (unit: rad/s)
         SaveData_[37] = e_dot_(0);
         SaveData_[38] = e_dot_(1);
-        SaveData_[39] = e_dot_(3);
-        SaveData_[40] = e_dot_(4);
-        SaveData_[41] = e_dot_(5);
-        SaveData_[42] = e_dot_(6);
+        SaveData_[39] = e_dot_(2);
+        SaveData_[40] = e_dot_(3);
+        SaveData_[41] = e_dot_(4);
+        SaveData_[42] = e_dot_(5);
 
         // Error intergal value in joint space (unit: rad*sec)
         SaveData_[43] = e_int_(0);
@@ -394,31 +395,31 @@ class Computed_Torque_Controller : public controller_interface::Controller<hardw
             printf("\n");
 
             printf("*** Desired State in Joint Space (unit: deg) ***\n");
-            printf("qd_(0): %f, ", qd_(0)*R2D);
-            printf("qd_(1): %f, ", qd_(1)*R2D);
-            printf("qd_(2): %f, ", qd_(2)*R2D);
-            printf("qd_(3): %f, ", qd_(3)*R2D);
-            printf("qd_(4): %f, ", qd_(4)*R2D);
-            printf("qd_(5): %f\n", qd_(5)*R2D);
+            printf("qd_(0): %f, ", qd_(0)*KDL::rad2deg);
+            printf("qd_(1): %f, ", qd_(1)*KDL::rad2deg);
+            printf("qd_(2): %f, ", qd_(2)*KDL::rad2deg);
+            printf("qd_(3): %f, ", qd_(3)*KDL::rad2deg);
+            printf("qd_(4): %f, ", qd_(4)*KDL::rad2deg);
+            printf("qd_(5): %f\n", qd_(5)*KDL::rad2deg);
             printf("\n");
 
             printf("*** Actual State in Joint Space (unit: deg) ***\n");
-            printf("q_(0): %f, ", q_(0) * R2D);
-            printf("q_(1): %f, ", q_(1) * R2D);
-            printf("q_(2): %f, ", q_(2) * R2D);
-            printf("q_(3): %f, ", q_(3) * R2D);
-            printf("q_(4): %f, ", q_(4) * R2D);
-            printf("q_(5): %f\n", q_(5) * R2D);
+            printf("q_(0): %f, ", q_(0) * KDL::rad2deg);
+            printf("q_(1): %f, ", q_(1) * KDL::rad2deg);
+            printf("q_(2): %f, ", q_(2) * KDL::rad2deg);
+            printf("q_(3): %f, ", q_(3) * KDL::rad2deg);
+            printf("q_(4): %f, ", q_(4) * KDL::rad2deg);
+            printf("q_(5): %f\n", q_(5) * KDL::rad2deg);
             printf("\n");
 
 
             printf("*** Joint Space Error (unit: deg)  ***\n");
-            printf("%f, ", R2D * e_(0));
-            printf("%f, ", R2D * e_(1));
-            printf("%f, ", R2D * e_(2));
-            printf("%f, ", R2D * e_(3));
-            printf("%f, ", R2D * e_(4));
-            printf("%f\n", R2D * e_(5));
+            printf("%f, ", KDL::rad2deg * e_(0));
+            printf("%f, ", KDL::rad2deg * e_(1));
+            printf("%f, ", KDL::rad2deg * e_(2));
+            printf("%f, ", KDL::rad2deg * e_(3));
+            printf("%f, ", KDL::rad2deg * e_(4));
+            printf("%f\n", KDL::rad2deg * e_(5));
             printf("\n");
 
 

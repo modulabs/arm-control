@@ -344,9 +344,10 @@ namespace arm_controllers{
 
 			// get joint states
 			static double t = 0;
+			double angle = 45*KDL::deg2rad;
 			for (size_t i=0; i<n_joints_; i++)
 			{
-				q_cmd_(i) = 45*D2R*sin(PI/2*t);
+				q_cmd_(i) = angle*sin(M_PI/2*t);
 				//q_cmd_(i) = commands[i];
 
 				enforceJointLimits(q_cmd_(i), i);
@@ -372,8 +373,8 @@ namespace arm_controllers{
 					q_error_(i) = q_cmd_(i) - q_(i);
 				}
 
-				qdot_cmd_(i) = 45*D2R*PI/2*cos(PI/2*t); // (q_cmd_(i) - q_cmd_old_(i)) / period.toSec();;
-				qddot_cmd_(i) = -45*D2R*PI*PI/2/2*sin(PI/2*t); // (qdot_cmd_(i) - qdot_cmd_old_(i)) / period.toSec();
+				qdot_cmd_(i) = angle*M_PI/2*cos(M_PI/2*t); // (q_cmd_(i) - q_cmd_old_(i)) / period.toSec();;
+				qddot_cmd_(i) = -angle*M_PI*M_PI/2/2*sin(M_PI/2*t); // (qdot_cmd_(i) - qdot_cmd_old_(i)) / period.toSec();
 
 				q_error_dot_(i) = qdot_cmd_(i) - qdot_(i);
 
@@ -396,7 +397,7 @@ namespace arm_controllers{
 			qdot_ref_.data = qdot_cmd_.data + gains.alpha_*q_error_.data;
 			qddot_ref_.data = qddot_cmd_.data + gains.alpha_*q_error_dot_.data;
 
-			tau_cmd_.data = M_.data * qddot_ref_.data + C_.data + G_.data + tau_fric_.data;
+			tau_cmd_.data = M_.data * qddot_ref_.data + C_.data + G_.data + tau_fric_.data; // not exact passivity-based controller equation, since we cannot get coriolis matrix independently from KDL library.
 
 			for(int i=0; i<n_joints_; i++)
 			{
